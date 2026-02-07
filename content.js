@@ -364,7 +364,9 @@ const positions = ['top-left', 'top-right', 'bottom-right', 'bottom-left'];
 let currentPositionIndex = 0;
 
 function toggleButtonVisibility() {
-    const buttonDiv = document.getElementById('custom-extension-container').parentElement;
+    const container = document.getElementById('custom-extension-container');
+    if (!container || !container.parentElement) return;
+    const buttonDiv = container.parentElement;
     isButtonsVisible = !isButtonsVisible;
     buttonDiv.style.display = isButtonsVisible ? 'block' : 'none';
 }
@@ -965,9 +967,13 @@ async function handleQualityMetric(observationId, metricValue, vote) {
 
     const agreeCell = targetRow.querySelector('td.agree');
     const disagreeCell = targetRow.querySelector('td.disagree');
+    if (!agreeCell || !disagreeCell) {
+        console.error(`Metric cells for "${metricLabel}" not found`);
+        return { success: false, error: 'Metric cells not found' };
+    }
     const agreeButton = agreeCell.querySelector('button');
     const disagreeButton = disagreeCell.querySelector('button');
-    
+
     if (!agreeButton || !disagreeButton) {
         console.error(`Buttons for "${metricLabel}" not found`);
         return { success: false, error: 'Buttons not found' };
@@ -1003,12 +1009,12 @@ async function handleQualityMetric(observationId, metricValue, vote) {
 }
 
 function getCurrentState(agreeCell, disagreeCell) {
-    const agreeButton = agreeCell.querySelector('button');
-    const disagreeButton = disagreeCell.querySelector('button');
+    const agreeButton = agreeCell ? agreeCell.querySelector('button') : null;
+    const disagreeButton = disagreeCell ? disagreeCell.querySelector('button') : null;
 
-    if (agreeButton.querySelector('.fa-thumbs-up')) {
+    if (agreeButton && agreeButton.querySelector('.fa-thumbs-up')) {
         return 'agree';
-    } else if (disagreeButton.querySelector('.fa-thumbs-down')) {
+    } else if (disagreeButton && disagreeButton.querySelector('.fa-thumbs-down')) {
         return 'disagree';
     } else {
         return 'none';
@@ -1857,12 +1863,17 @@ async function updateObservationPage(observationId) {
             return false;
         }
 
-        const linkText = favContainer.querySelector('.linky').textContent;
+        const linky = favContainer.querySelector('.linky');
+        const favButton = favContainer.querySelector('.action');
+        if (!linky || !favButton) {
+            console.log('Fav button elements not found');
+            return false;
+        }
+        const linkText = linky.textContent;
         const originalState = linkText === "You faved this!" ? 'faved' : 'unfaved';
         console.log(`Original fav state: ${originalState}`);
 
         // Click the fav button
-        const favButton = favContainer.querySelector('.action');
         favButton.click();
 
         // Wait for the state to change
@@ -1892,7 +1903,17 @@ function waitForFavStateChange(originalState) {
 
         const checkState = () => {
             const favContainer = document.querySelector('.Faves');
-            const linkText = favContainer.querySelector('.linky').textContent;
+            const linky = favContainer ? favContainer.querySelector('.linky') : null;
+            if (!favContainer || !linky) {
+                elapsedTime += checkInterval;
+                if (elapsedTime >= maxWaitTime) {
+                    reject(new Error('Fav container disappeared during state check'));
+                } else {
+                    setTimeout(checkState, checkInterval);
+                }
+                return;
+            }
+            const linkText = linky.textContent;
             const currentState = linkText === "You faved this!" ? 'faved' : 'unfaved';
 
             if (currentState !== originalState) {
@@ -1948,7 +1969,9 @@ function createDynamicButtons() {
             display: flex;
             align-items: center;
         `;
-        buttonContainer.parentElement.insertBefore(sortButtonContainer, buttonContainer);
+        if (buttonContainer.parentElement) {
+            buttonContainer.parentElement.insertBefore(sortButtonContainer, buttonContainer);
+        }
 
         // Add sort button and dropdown
         const sortButtonWrapper = document.createElement('div');
