@@ -1,4 +1,43 @@
 console.log("Content script loaded. URL:", window.location.href);
+
+function safeErrorString(error) {
+    if (!error) return 'Unknown error';
+    if (typeof error === 'string') return error;
+    if (error.message) return error.message;
+    try {
+        const str = safeErrorString(error);
+        if (str && str !== '[object Object]') return str;
+    } catch (e) {}
+    return 'Unknown error';
+}
+
+browserAPI.storage.local.get(['highlightColor', 'buttonMinWidth', 'verticalButtonLayout', 'buttonContainerMaxWidth'], function(data) {
+    const color = data.highlightColor || '#FF6600';
+    document.documentElement.style.setProperty('--highlight-color', color);
+
+    const minWidth = data.buttonMinWidth || 100;
+    const maxWidth = data.buttonContainerMaxWidth || 600;
+    const isVertical = data.verticalButtonLayout || false;
+
+    document.documentElement.style.setProperty('--button-min-width', minWidth + 'px');
+    document.documentElement.style.setProperty('--button-container-max-width', maxWidth + 'px');
+    document.documentElement.style.setProperty('--button-flex-direction', isVertical ? 'column' : 'row');
+});
+
+browserAPI.storage.onChanged.addListener(function(changes) {
+    if (changes.highlightColor) {
+        document.documentElement.style.setProperty('--highlight-color', changes.highlightColor.newValue);
+    }
+    if (changes.buttonMinWidth) {
+        document.documentElement.style.setProperty('--button-min-width', changes.buttonMinWidth.newValue + 'px');
+    }
+    if (changes.buttonContainerMaxWidth) {
+        document.documentElement.style.setProperty('--button-container-max-width', changes.buttonContainerMaxWidth.newValue + 'px');
+    }
+    if (changes.verticalButtonLayout) {
+        document.documentElement.style.setProperty('--button-flex-direction', changes.verticalButtonLayout.newValue ? 'column' : 'row');
+    }
+});
 let buttonPosition = 'bottom-right'; // Default position
 let idDisplay;
 let refreshEnabled = true;
@@ -148,6 +187,9 @@ function createShortcutList() {
         <li>Alt + H: Toggle this shortcut list</li>
         <li>Alt + S: Cycle through button sets</li>
         <li>Alt + M: Toggle bulk action mode</li>
+        <li>Ctrl + A: Select all observations (in bulk mode)</li>
+        <li>Ctrl + Shift + A: Clear all selections (in bulk mode)</li>
+        <li>Ctrl + Click: Open identify modal for observation (in bulk mode)</li>
     `;
 
     // Add custom shortcuts
@@ -267,6 +309,20 @@ function handleAllShortcuts(event) {
              event.preventDefault();
              cycleConfigurationSet();
              return;
+        }
+        if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === 'a') {
+            if (bulkActionModeEnabled) {
+                event.preventDefault();
+                selectAllObservations();
+                return;
+            }
+        }
+        if ((event.ctrlKey || event.metaKey) && event.shiftKey && !event.altKey && event.key.toLowerCase() === 'a') {
+            if (bulkActionModeEnabled) {
+                event.preventDefault();
+                clearSelection();
+                return;
+            }
         }
 
         // Process custom shortcuts for individual observation actions (when bulk mode is NOT enabled)
@@ -696,7 +752,7 @@ async function addAnnotation(observationId, attributeId, valueId) {
         }
     } catch (error) {
         console.error('Error adding annotation:', error);
-        return { success: false, error: error.toString() };
+        return { success: false, error: safeErrorString(error) };
     }
 }
 
@@ -739,7 +795,7 @@ async function addObservationToProject(observationId, projectId) {
         }
     } catch (error) {
         console.error('Error adding observation to project:', error);
-        return { success: false, error: error.toString() };
+        return { success: false, error: safeErrorString(error) };
     }
 }
 
@@ -783,7 +839,7 @@ async function addComment(observationId, commentBody) {
         }
     } catch (error) {
         console.error('Error adding comment:', error);
-        return { success: false, error: error.toString() };
+        return { success: false, error: safeErrorString(error) };
     }
 }
 
@@ -828,7 +884,7 @@ async function addTaxonId(observationId, taxonId, comment = '', disagreement = f
         }
     } catch (error) {
         console.error('Error adding Taxon ID:', error);
-        return { success: false, error: error.toString() };
+        return { success: false, error: safeErrorString(error) };
     }
 }
 
@@ -882,7 +938,7 @@ async function handleQualityMetricAPI(observationId, metric, vote) {
         return { success: true, data: responseData };
     } catch (error) {
         console.error(`Error in quality metric ${metric} ${vote}:`, error);
-        return { success: false, error: error.toString() };
+        return { success: false, error: safeErrorString(error) };
     }
 }
 
@@ -1020,7 +1076,7 @@ async function copyObservationField(observationId, sourceFieldId, targetFieldId)
         return { success: true, data: postResponse };
     } catch (error) {
         console.error('Error in copyObservationField:', error);
-        return { success: false, error: error.toString() };
+        return { success: false, error: safeErrorString(error) };
     }
 }
 
@@ -1095,9 +1151,10 @@ style.textContent += `
   }
   #custom-extension-container {
       display: flex;
+      flex-direction: var(--button-flex-direction, row);
       flex-wrap: wrap;
       gap: 5px;
-      max-width: 600px;
+      max-width: var(--button-container-max-width, 600px);
   }
     #custom-extension-container.dragging {
     height: var(--original-height);
@@ -1107,7 +1164,7 @@ style.textContent += `
         position: relative;
         margin: 3px;
         flex-grow: 1;
-        min-width: 100px;
+        min-width: var(--button-min-width, 100px);
     }
     .button-ph button:hover {
         background-color: rgba(0, 0, 0, 0.7) !important;
@@ -1166,7 +1223,7 @@ style.textContent += `
         padding: 10px 20px;
     }
     .ObservationsGridItem.selected {
-        box-shadow: 0 0 0 4px #4CAF50;
+        box-shadow: 0 0 0 6px var(--highlight-color, #FF6600);
     }
     #enable-bulk-mode-button {
         position: fixed;
@@ -1464,7 +1521,7 @@ async function performSingleAction(action, observationId, isIdentifyPage) {
                 };
             } catch (error) {
                 console.error('Error withdrawing identification:', error);
-                return { success: false, error: error.toString() };
+                return { success: false, error: safeErrorString(error) };
             }
             case 'observationField':
                 // Check if value is identical before calling addObservationField ---
@@ -1531,7 +1588,7 @@ async function performSingleAction(action, observationId, isIdentifyPage) {
                 return result;
             } catch (error) {
                 console.error('Error in project action:', error);
-                return { success: false, error: error.toString() };
+                return { success: false, error: safeErrorString(error) };
             }
         case 'addComment':
             const commentResult = await addComment(observationId, action.commentBody);
@@ -2220,8 +2277,8 @@ function createButton(config) {
                             } else if (result.reason === 'already_member' && currentButtonConfig.actions.some(a => a.type === 'addToProject' && !a.remove && a.projectId === result.projectId)) {
                                 warningsToShow.push(`Observation ${result.observationId || currentObservationId}: Already a member of project "${displayProjectName}".`);
                             }
-                        } else if (result.error) { 
-                             warningsToShow.push(`Action failed: ${getCleanErrorMessage(result.error.toString())}`);
+                        } else if (result.error) {
+                             warningsToShow.push(`Action failed: ${getCleanErrorMessage(result.error)}`);
                         }
                     }
                 });
@@ -2629,15 +2686,115 @@ function createBulkActionButtons() {
     enableBulkModeButton.addEventListener('click', enableBulkActionMode);
     // Note: The general .bulk-action-button style is fine, no fixed position needed.
 
-    // 4. Append the button and container to the new wrapper
+    // 4. Create CSV loader UI
+    const csvLoaderContainer = createCSVLoaderUI();
+
+    // 5. Append the button and containers to the new wrapper
     bulkUiWrapper.appendChild(enableBulkModeButton);
     bulkUiWrapper.appendChild(bulkButtonContainer);
+    bulkUiWrapper.appendChild(csvLoaderContainer);
 
-    // 5. Append the single wrapper to the body
+    // 6. Append the single wrapper to the body
     document.body.appendChild(bulkUiWrapper);
 
     console.log('Bulk action UI created');
     updateBulkButtonPosition(); // Position the new wrapper
+}
+
+function createCSVLoaderUI() {
+    const container = document.createElement('div');
+    container.id = 'csv-loader-container';
+    container.style.backgroundColor = 'white';
+    container.style.padding = '10px';
+    container.style.border = '1px solid black';
+    container.style.marginTop = '10px';
+    container.style.display = 'none';
+
+    const title = document.createElement('h3');
+    title.textContent = 'Load Observations from CSV';
+    title.style.margin = '0 0 10px 0';
+
+    const helpText = document.createElement('p');
+    helpText.textContent = 'Upload a CSV with observation IDs or URLs (one per line or comma-separated)';
+    helpText.style.fontSize = '12px';
+    helpText.style.color = '#666';
+    helpText.style.margin = '0 0 10px 0';
+
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.accept = '.csv,.txt';
+    fileInput.id = 'csv-file-input';
+
+    const loadButton = createBulkActionButton('Load & Open in Identify', () => {
+        const file = fileInput.files[0];
+        if (!file) {
+            alert('Please select a CSV file');
+            return;
+        }
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const text = e.target.result;
+            parseCSVObservations(text);
+        };
+        reader.readAsText(file);
+    });
+
+    container.appendChild(title);
+    container.appendChild(helpText);
+    container.appendChild(fileInput);
+    container.appendChild(loadButton);
+
+    const toggleButton = document.createElement('button');
+    toggleButton.textContent = 'CSV Loader';
+    toggleButton.id = 'csv-loader-toggle';
+    toggleButton.classList.add('bulk-action-button');
+    toggleButton.addEventListener('click', () => {
+        const isHidden = container.style.display === 'none';
+        container.style.display = isHidden ? 'block' : 'none';
+    });
+
+    const wrapper = document.createElement('div');
+    wrapper.appendChild(toggleButton);
+    wrapper.appendChild(container);
+
+    return wrapper;
+}
+
+function parseCSVObservations(csvText) {
+    const lines = csvText.split('\n');
+    const ids = [];
+
+    for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+
+        const parts = trimmed.split(/[,\s]+/);
+        for (const part of parts) {
+            const cleaned = part.trim().replace(/['"]/g, '');
+
+            // Extract ID from full URL like https://www.inaturalist.org/observations/208103778
+            const urlMatch = cleaned.match(/inaturalist\.org\/observations\/(\d+)/);
+            if (urlMatch) {
+                ids.push(urlMatch[1]);
+            }
+            // Or just a plain number
+            else if (/^\d+$/.test(cleaned)) {
+                ids.push(cleaned);
+            }
+        }
+    }
+
+    if (ids.length === 0) {
+        alert('No observation IDs found in CSV');
+        return;
+    }
+
+    // Remove duplicates
+    const uniqueIds = [...new Set(ids)];
+
+    const identifyUrl = `https://www.inaturalist.org/observations/identify?quality_grade=casual,needs_id,research&reviewed=any&verifiable=any&place_id=any&per_page=${uniqueIds.length}&id=${uniqueIds.join(',')}`;
+
+    window.location.href = identifyUrl;
 }
 
 function createBulkActionButton(text, onClickFunction) {
@@ -2779,6 +2936,12 @@ document.body.addEventListener('click', (e) => {
     if (bulkActionModeEnabled) {
         const clickedObsElement = e.target.closest('.ObservationsGridItem');
         if (clickedObsElement) {
+            // Allow Ctrl+click to open the identify modal even in bulk mode
+            if (e.ctrlKey) {
+                // Don't prevent default - let the normal click behavior open the modal
+                return;
+            }
+
             // Prevent default navigation/action if clicking within the item,
             // as we are capturing the click for selection purposes.
             e.preventDefault();
@@ -2910,7 +3073,12 @@ async function executeBulkAction(selectedActionConfig, modal, isCancelledFunc) {
     const overwrittenValues = {}; // This will store actual overwrites { obsId: { fieldName: { oldValue, newValue } } }
     const errorMessages = [];
 
-    const { safeMode = true } = await new Promise(resolve => 
+    // Enhanced cancellation check that looks at modal state
+    const checkCancelled = () => {
+        return isCancelledFunc() || modal.dataset.cancelled === 'true';
+    };
+
+    const { safeMode = true } = await new Promise(resolve =>
         browserAPI.storage.local.get('safeMode', resolve)
     );
 
@@ -2926,7 +3094,14 @@ async function executeBulkAction(selectedActionConfig, modal, isCancelledFunc) {
 
 
     try {
-        const preActionStates = await generatePreActionStates(observationIds);
+        const preActionStates = await generatePreActionStates(observationIds, checkCancelled, modal);
+
+        // Check if cancelled during pre-action state fetch
+        if (checkCancelled()) {
+            if (modal.parentNode) document.body.removeChild(modal);
+            return { results: [], skippedObservations: [], overwrittenValues: {}, errorMessages: [] };
+        }
+
         console.log('Pre-action states:', preActionStates);
 
         const preliminaryUndoRecord = await generatePreliminaryUndoRecord(selectedActionConfig, observationIds, preActionStates);
@@ -2936,9 +3111,25 @@ async function executeBulkAction(selectedActionConfig, modal, isCancelledFunc) {
         }
 
         for (const observationId of observationIds) {
-            if (isCancelledFunc()) {
+            if (checkCancelled()) {
                 if(statusElement) statusElement.textContent = 'Action cancelled. Processing completed actions...';
                 break;
+            }
+
+            // Skip observations that don't have pre-action states (failed to fetch)
+            if (!preActionStates[observationId]) {
+                console.error(`Skipping observation ${observationId} - pre-action state not available`);
+                allActionResults.push({
+                    observationId,
+                    action: 'fetch',
+                    success: false,
+                    message: 'Failed to fetch observation data from API',
+                    error: 'Pre-action state unavailable'
+                });
+                processedObservations++;
+                if (progressFill) await updateProgressBar(progressFill, (processedObservations / totalObservations) * 100);
+                if (statusElement) statusElement.textContent = `Processing observation ${processedObservations}/${totalObservations}...`;
+                continue;
             }
 
             let observationSkippedThisIterationDueToSafeMode = false;
@@ -2974,6 +3165,7 @@ async function executeBulkAction(selectedActionConfig, modal, isCancelledFunc) {
                      console.log(`Obs ${observationId} skipped entirely due to Safe Mode and existing OF values.`);
                      processedObservations++;
                      if (progressFill) await updateProgressBar(progressFill, (processedObservations / totalObservations) * 100);
+                     if (statusElement) statusElement.textContent = `Processing observation ${processedObservations}/${totalObservations}...`;
                      continue; // Move to the next observationId
                  }
             }
@@ -3022,6 +3214,10 @@ async function executeBulkAction(selectedActionConfig, modal, isCancelledFunc) {
                     if (action.type === 'observationField') resultForSummary.fieldId = action.fieldId;
                     // Add other potential differentiators if actions of same type can vary (e.g. annotation field ID)
                     if (action.type === 'annotation') resultForSummary.annotationField = action.annotationField;
+                    // Ensure error is also stored as message for consistency with display code
+                    if (!actionResult.success && actionResult.error && !actionResult.message) {
+                        resultForSummary.message = actionResult.error;
+                    }
 
 
                     currentObservationResults.push(resultForSummary);
@@ -3042,12 +3238,14 @@ async function executeBulkAction(selectedActionConfig, modal, isCancelledFunc) {
 
                 } catch (error) {
                     console.error(`Error executing action ${action.type} for observation ${observationId}:`, error);
-                    errorMessages.push(`Error processing observation ${observationId} (action: ${action.type}): ${error.message}`);
-                    currentObservationResults.push({ 
-                        success: false, 
-                        error: error.toString(), 
-                        observationId, 
-                        action: action.type, 
+                    const errorMessage = error?.message || (typeof error === 'string' ? error : 'Unknown error');
+                    errorMessages.push(`Error processing observation ${observationId} (action: ${action.type}): ${errorMessage}`);
+                    currentObservationResults.push({
+                        success: false,
+                        error: errorMessage,
+                        message: errorMessage,
+                        observationId,
+                        action: action.type,
                         fieldId: action.type === 'observationField' ? action.fieldId : undefined,
                         annotationField: action.type === 'annotation' ? action.annotationField : undefined
                     });
@@ -3072,15 +3270,57 @@ async function executeBulkAction(selectedActionConfig, modal, isCancelledFunc) {
                 );
             }
             allActionResults.push(...currentObservationResults);
-            
+
             processedObservations++;
             if (progressFill) await updateProgressBar(progressFill, (processedObservations / totalObservations) * 100);
+            if (statusElement) statusElement.textContent = `Processing observation ${processedObservations}/${totalObservations}...`;
         } // End of for...of observationIds loop
 
+        // DEBUG: Comprehensive logging for issue #27
+        console.log('=== UNDO RECORD DEBUG START ===');
+        console.log('Total observations processed:', observationIds.length);
+        console.log('Total action results:', allActionResults.length);
+
+        const successfulResults = allActionResults.filter(r => r.success);
+        console.log('Successful action results:', successfulResults.length);
+
+        const uniqueSuccessfulObsIds = [...new Set(successfulResults.map(r => r.observationId))];
+        console.log('Unique successful observation IDs:', uniqueSuccessfulObsIds.length);
+        console.log('Unique successful IDs:', uniqueSuccessfulObsIds);
+
+        const prelimObsIds = Object.keys(preliminaryUndoRecord.observations);
+        console.log('Preliminary undo record observation count:', prelimObsIds.length);
+        console.log('Preliminary undo record IDs:', prelimObsIds);
+
+        // Find observations that succeeded but are not in preliminary record
+        const missingFromPrelim = uniqueSuccessfulObsIds.filter(id => !prelimObsIds.includes(id));
+        if (missingFromPrelim.length > 0) {
+            console.error('⚠️ OBSERVATIONS MISSING FROM PRELIMINARY UNDO RECORD:', missingFromPrelim);
+            console.error('These observations had successful actions but won\'t be in undo record!');
+        }
+
         const finalUndoRecord = generateUndoRecord(preliminaryUndoRecord, allActionResults, overwrittenValues);
+
+        const finalObsIds = Object.keys(finalUndoRecord.observations);
+        console.log('Final undo record observation count:', finalObsIds.length);
+        console.log('Final undo record IDs:', finalObsIds);
+
+        // Find observations that succeeded but are not in final record
+        const missingFromFinal = uniqueSuccessfulObsIds.filter(id => !finalObsIds.includes(id));
+        if (missingFromFinal.length > 0) {
+            console.error('⚠️ OBSERVATIONS MISSING FROM FINAL UNDO RECORD:', missingFromFinal);
+            console.error('Count discrepancy: Successful =', uniqueSuccessfulObsIds.length, 'vs Undo Record =', finalObsIds.length);
+        }
+
+        console.log('=== UNDO RECORD DEBUG END ===');
+
         await storeUndoRecord(finalUndoRecord);
 
         if (modal.parentNode) document.body.removeChild(modal); // remove progress modal
+
+        const { autoRefreshAfterBulk = false } = await new Promise(resolve =>
+            browserAPI.storage.local.get('autoRefreshAfterBulk', resolve)
+        );
 
         const actionSpecificSummary = summarizeBulkActionOutcomes(allActionResults, selectedActionConfig.actions);
         const resultsModal = createDetailedActionResultsModal(
@@ -3088,9 +3328,17 @@ async function executeBulkAction(selectedActionConfig, modal, isCancelledFunc) {
             selectedActionConfig.name,
             skippedObservationsDueToSafeMode, // Pass the array of IDs skipped by safe mode
             overwrittenValues,
-            errorMessages
+            errorMessages,
+            autoRefreshAfterBulk // Pass the refresh setting to the modal
         );
         document.body.appendChild(resultsModal);
+
+        // If auto-refresh is enabled, refresh after 2 seconds
+        if (autoRefreshAfterBulk) {
+            setTimeout(() => {
+                window.location.reload();
+            }, 2000);
+        }
 
         return { results: allActionResults, skippedObservations: skippedObservationsDueToSafeMode, overwrittenValues, errorMessages };
     } catch (error) {
@@ -3112,7 +3360,7 @@ async function executeAction(action, observationId, preActionStates, preliminary
         }
     } catch (error) {
         console.error(`Failed to perform action ${action.type} for observation ${observationId}:`, error);
-        results.push({ observationId, action: action.type, success: false, error: error.toString() });
+        results.push({ observationId, action: action.type, success: false, error: safeErrorString(error) });
     }
 }
 
@@ -3264,11 +3512,14 @@ function downloadTextFile(content, filename) {
     URL.revokeObjectURL(url);
 }
 
-async function generatePreActionStates(observationIds) {
+async function generatePreActionStates(observationIds, checkCancelled, modal) {
+    console.log('=== PRE-ACTION STATES DEBUG START ===');
+    console.log('Fetching pre-action states for', observationIds.length, 'observations');
     const preActionStates = {};
-    const batchSize = 20;
+    const failedFetches = [];
     const maxRetries = 3;
     const baseDelay = 200;
+    const statusElement = modal ? modal.querySelector('#bulk-action-status') : null;
 
     async function fetchWithRetry(url, retries = 0) {
         try {
@@ -3293,37 +3544,76 @@ async function generatePreActionStates(observationIds) {
         }
     }
 
+    // Fetch observations in batches using the API's multi-ID support
+    const batchSize = 30; // API supports up to 30 IDs per request
     for (let i = 0; i < observationIds.length; i += batchSize) {
-        const batchStart = Date.now(); // Added this line
-        const batch = observationIds.slice(i, i + batchSize);
-        
-        await Promise.all(batch.map(async (id) => {
-            try {
-                const obsData = await fetchWithRetry(`https://api.inaturalist.org/v1/observations/${id}`);
-                preActionStates[id] = obsData.results[0];
-                
-                try {
-                    const subscriptionData = await makeAPIRequest(`/observations/${id}/subscriptions`);
-                    preActionStates[id].isSubscribed = subscriptionData.results && 
-                        subscriptionData.results.length > 0;
-                } catch (error) {
-                    console.error(`Error fetching subscription data for observation ${id}:`, error);
-                    preActionStates[id].isSubscribed = false;
-                }
-            } catch (error) {
-                console.error(`Failed to fetch pre-action state for observation ${id}:`, error);
-            }
-        }));
+        // Check for cancellation
+        if (checkCancelled && checkCancelled()) {
+            console.log('Pre-action state fetch cancelled by user');
+            if (statusElement) statusElement.textContent = 'Cancelled';
+            break;
+        }
 
-        const batchDuration = Date.now() - batchStart;
+        const batch = observationIds.slice(i, i + batchSize);
+        const idsParam = batch.join(',');
+
+        if (statusElement) {
+            statusElement.textContent = `Fetching observation data (${Math.min(i + batchSize, observationIds.length)}/${observationIds.length})...`;
+        }
+
+        try {
+            // Fetch all observations in this batch with a single API call
+            const obsData = await fetchWithRetry(`https://api.inaturalist.org/v1/observations/${idsParam}`);
+
+            // Store each observation's data
+            for (const obs of obsData.results) {
+                preActionStates[obs.id] = obs;
+            }
+
+            // Now fetch subscription data for each observation in this batch
+            for (const id of batch) {
+                if (preActionStates[id]) {
+                    try {
+                        const subscriptionData = await makeAPIRequest(`/observations/${id}/subscriptions`);
+                        preActionStates[id].isSubscribed = subscriptionData.results &&
+                            subscriptionData.results.length > 0;
+                    } catch (error) {
+                        console.error(`Error fetching subscription data for observation ${id}:`, error);
+                        preActionStates[id].isSubscribed = false;
+                    }
+                }
+            }
+
+            // Check if any IDs from this batch weren't returned
+            const returnedIds = obsData.results.map(obs => obs.id.toString());
+            const missingIds = batch.filter(id => !returnedIds.includes(id));
+            if (missingIds.length > 0) {
+                console.error(`⚠️ DEBUG ISSUE #27: Observations not returned by API:`, missingIds);
+                failedFetches.push(...missingIds);
+            }
+        } catch (error) {
+            console.error(`⚠️ DEBUG ISSUE #27: Failed to fetch batch starting at ${batch[0]}:`, error);
+            failedFetches.push(...batch);
+        }
+
+        // Update progress
         const progress = Math.min(100, ((i + batchSize) / observationIds.length) * 100);
         updateProgressBar(document.querySelector('.progress-fill'), progress);
 
-        if (batchDuration < 1000 && i + batchSize < observationIds.length) {
-            await delay(1000 - batchDuration);
+        // Add delay between batches (not needed as much with batch fetching, but still good practice)
+        if (i + batchSize < observationIds.length) {
+            await delay(500); // 500ms between batches of 30
         }
     }
-    
+
+    console.log('Pre-action states fetched for', Object.keys(preActionStates).length, 'observations');
+    if (failedFetches.length > 0) {
+        console.error(`⚠️ DEBUG ISSUE #27: Failed to fetch ${failedFetches.length} pre-action states`);
+        console.error('Failed observation IDs:', failedFetches);
+        console.error('These observations will NOT be in the undo record!');
+    }
+    console.log('=== PRE-ACTION STATES DEBUG END ===');
+
     return preActionStates;
 }
 
@@ -3333,6 +3623,9 @@ function generateUniqueId() {
 
 async function generatePreliminaryUndoRecord(action, observationIds, preActionStates) {
     console.log('Generating preliminary undo record for action:', action.name);
+    console.log('Total observation IDs to process:', observationIds.length);
+    console.log('Pre-action states available:', Object.keys(preActionStates).length);
+
     let undoRecord = {
         id: generateUniqueId(),
         timestamp: new Date().toISOString(),
@@ -3343,9 +3636,12 @@ async function generatePreliminaryUndoRecord(action, observationIds, preActionSt
     const currentUserId = await getCurrentUserId();
     console.log('Current user ID:', currentUserId);
 
+    const missingPreActionStates = [];
+
     for (const observationId of observationIds) {
         if (!preActionStates[observationId]) {
-            console.warn(`No pre-action state found for observation ${observationId}`);
+            console.error(`⚠️ DEBUG ISSUE #27: No pre-action state found for observation ${observationId} - WILL NOT BE IN UNDO RECORD`);
+            missingPreActionStates.push(observationId);
             continue;
         }
 
@@ -3445,7 +3741,7 @@ async function generatePreliminaryUndoRecord(action, observationIds, preActionSt
                         console.error('Error generating undo record for project action:', error);
                         undoAction = { 
                             success: false, 
-                            error: error.toString(),
+                            error: safeErrorString(error),
                             projectId: actionItem.projectId,
                             projectName: actionItem.projectName,
                             type: 'removeFromProject'
@@ -3498,6 +3794,12 @@ async function generatePreliminaryUndoRecord(action, observationIds, preActionSt
         }
     }
 
+    if (missingPreActionStates.length > 0) {
+        console.error(`⚠️ DEBUG ISSUE #27: ${missingPreActionStates.length} observations missing from pre-action states!`);
+        console.error('Missing observation IDs:', missingPreActionStates);
+    }
+
+    console.log('Generated preliminary undo record with', Object.keys(undoRecord.observations).length, 'observations');
     console.log('Generated preliminary undo record:', undoRecord);
     return undoRecord;
 }
@@ -5807,10 +6109,32 @@ function createProgressModal() {
     status.id = 'bulk-action-status';
     status.style.textAlign = 'center';
 
+    const cancelButton = document.createElement('button');
+    cancelButton.textContent = 'Cancel';
+    cancelButton.className = 'bulk-action-button';
+    cancelButton.style.cssText = `
+        margin-top: 10px;
+        padding: 10px 20px;
+        background-color: #f44336;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+    `;
+    cancelButton.onclick = () => {
+        if (confirm('Are you sure you want to cancel? Actions already performed cannot be undone by canceling.')) {
+            modal.dataset.cancelled = 'true';
+            cancelButton.disabled = true;
+            cancelButton.textContent = 'Cancelling...';
+            status.textContent = 'Cancelling - waiting for current action to complete...';
+        }
+    };
+
     progressContainer.appendChild(progressFill);
     content.appendChild(title);
     content.appendChild(progressContainer);
     content.appendChild(status);
+    content.appendChild(cancelButton);
     modal.appendChild(content);
 
     return modal;

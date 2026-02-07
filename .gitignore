@@ -1,2 +1,8 @@
 node_modules/
 coverage/
+
+# Tests don't need to be in the extension package
+tests/
+jest.config.js
+package.json
+package-lock.json

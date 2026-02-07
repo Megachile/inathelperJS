@@ -663,37 +663,100 @@ button:hover {
         <button id="removeSetButton" class="set-management-button">Remove Set</button>
     </div>
     <button id="openBulkActionsButton">Open Advanced Filters URL Generator</button>
+    <button id="openPhenoPredictorButton">Open Phenology Predictor</button>
     <button id="showUndoRecordsButton">Show Bulk Action Records</button>
     <div id="storageStatus" style="margin-top: 20px; text-align: center; font-size: 0.9em; color: #555;">
         Storage Usage: Loading...
     </div>    
     <div class="hardcoded-shortcuts">
-        <h2 id="auto-prevention-toggle">Prevent Auto-reviewed/Followed [+]</h2>
-        <div id="auto-prevention-settings" style="display: none; margin-top: 10px;">          <div class="setting-item">
-                <input type="checkbox" id="preventTaxonFollow">
-                <label for="preventTaxonFollow">Prevent automatic following when adding taxon IDs</label>
+        <h2 id="advanced-settings-toggle">Advanced Settings [+]</h2>
+        <div id="advanced-settings-container" style="display: none; margin-top: 10px; padding-left: 20px;">
+            <div class="hardcoded-shortcuts">
+                <h3 id="selection-highlight-toggle" style="cursor: pointer; font-size: 1.1em;">Selection Highlight Color [+]</h3>
+                <div id="selection-highlight-settings" style="display: none; margin-top: 10px;">
+                    <div class="setting-item" style="flex-direction: column; align-items: flex-start;">
+                        <label style="margin-bottom: 10px;">Choose highlight color for selected observations:</label>
+                        <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 10px;">
+                            <button class="color-preset" data-color="#FF6600" style="background-color: #FF6600; width: 60px; height: 40px; border: 2px solid #ccc; cursor: pointer; border-radius: 4px;" title="Bright Orange"></button>
+                            <button class="color-preset" data-color="#FF9800" style="background-color: #FF9800; width: 60px; height: 40px; border: 2px solid #ccc; cursor: pointer; border-radius: 4px;" title="Orange"></button>
+                            <button class="color-preset" data-color="#E91E63" style="background-color: #E91E63; width: 60px; height: 40px; border: 2px solid #ccc; cursor: pointer; border-radius: 4px;" title="Hot Pink"></button>
+                            <button class="color-preset" data-color="#00D9FF" style="background-color: #00D9FF; width: 60px; height: 40px; border: 2px solid #ccc; cursor: pointer; border-radius: 4px;" title="Cyan"></button>
+                            <button class="color-preset" data-color="#9C27B0" style="background-color: #9C27B0; width: 60px; height: 40px; border: 2px solid #ccc; cursor: pointer; border-radius: 4px;" title="Purple"></button>
+                            <button class="color-preset" data-color="#F44336" style="background-color: #F44336; width: 60px; height: 40px; border: 2px solid #ccc; cursor: pointer; border-radius: 4px;" title="Red"></button>
+                            <button class="color-preset" data-color="#2196F3" style="background-color: #2196F3; width: 60px; height: 40px; border: 2px solid #ccc; cursor: pointer; border-radius: 4px;" title="Blue"></button>
+                            <button class="color-preset" data-color="#4CAF50" style="background-color: #4CAF50; width: 60px; height: 40px; border: 2px solid #ccc; cursor: pointer; border-radius: 4px;" title="Green (Original)"></button>
+                            <button class="color-preset" data-color="#000000" style="background-color: #000000; width: 60px; height: 40px; border: 2px solid #ccc; cursor: pointer; border-radius: 4px;" title="Black"></button>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <label for="customHighlightColor">Custom color:</label>
+                            <input type="color" id="customHighlightColor" value="#FF6600" style="width: 60px; height: 40px; border: 2px solid #ccc; cursor: pointer;">
+                        </div>
+                        <div style="margin-top: 10px; padding: 10px; background-color: #f5f5f5; border-radius: 4px;">
+                            <strong>Preview:</strong> <span id="highlightPreview" style="display: inline-block; width: 100px; height: 30px; border: 6px solid #FF6600; border-radius: 4px;"></span>
+                        </div>
+                    </div>
+                </div>
             </div>
-            <div class="setting-item">
-                <input type="checkbox" id="preventFieldFollow">
-                <label for="preventFieldFollow">Prevent automatic following when adding observation fields</label>
+            <div class="hardcoded-shortcuts">
+                <h3 id="auto-prevention-toggle" style="cursor: pointer; font-size: 1.1em;">Prevent Auto-reviewed/Followed [+]</h3>
+                <div id="auto-prevention-settings" style="display: none; margin-top: 10px;">          <div class="setting-item">
+                        <input type="checkbox" id="preventTaxonFollow">
+                        <label for="preventTaxonFollow">Prevent automatic following when adding taxon IDs</label>
+                    </div>
+                    <div class="setting-item">
+                        <input type="checkbox" id="preventFieldFollow">
+                        <label for="preventFieldFollow">Prevent automatic following when adding observation fields</label>
+                    </div>
+                    <div class="setting-item">
+                        <input type="checkbox" id="preventTaxonReview">
+                        <label for="preventTaxonReview">Prevent automatic reviewing when adding taxon IDs</label>
+                    </div>
+                </div>
             </div>
-            <div class="setting-item">
-                <input type="checkbox" id="preventTaxonReview">
-                <label for="preventTaxonReview">Prevent automatic reviewing when adding taxon IDs</label>
+            <div class="hardcoded-shortcuts">
+                <h3 id="bulk-refresh-toggle" style="cursor: pointer; font-size: 1.1em;">Bulk Action Settings [+]</h3>
+                <div id="bulk-refresh-settings" style="display: none; margin-top: 10px;">
+                    <div class="setting-item">
+                        <input type="checkbox" id="autoRefreshAfterBulk">
+                        <label for="autoRefreshAfterBulk">Automatically refresh page after bulk action completes</label>
+                    </div>
+                </div>
+            </div>
+            <div class="hardcoded-shortcuts">
+                <h3 id="button-layout-toggle" style="cursor: pointer; font-size: 1.1em;">Button Layout [+]</h3>
+                <div id="button-layout-settings" style="display: none; margin-top: 10px;">
+                    <div class="setting-item" style="flex-direction: column; align-items: flex-start;">
+                        <label for="buttonMinWidth" style="margin-bottom: 5px;">Minimum button width (px):</label>
+                        <input type="number" id="buttonMinWidth" min="50" max="300" value="100" style="width: 100px; padding: 5px;">
+                        <small style="color: #666; margin-top: 5px;">Default: 100px</small>
+                    </div>
+                    <div class="setting-item" style="margin-top: 10px;">
+                        <input type="checkbox" id="verticalButtonLayout">
+                        <label for="verticalButtonLayout">Use vertical button layout</label>
+                    </div>
+                    <div class="setting-item" style="flex-direction: column; align-items: flex-start; margin-top: 10px;">
+                        <label for="buttonContainerMaxWidth" style="margin-bottom: 5px;">Container max width (px):</label>
+                        <input type="number" id="buttonContainerMaxWidth" min="200" max="1000" value="600" style="width: 100px; padding: 5px;">
+                        <small style="color: #666; margin-top: 5px;">Default: 600px</small>
+                    </div>
+                </div>
+            </div>
+            <div class="hardcoded-shortcuts">
+                <h3 id="hardcoded-shortcuts-toggle" style="cursor: pointer; font-size: 1.1em;">General Shortcuts [+]</h3>
+                <ul id="hardcoded-shortcuts-list" style="display: none;">
+                    <li>Shift + B: Toggle button visibility</li>
+                    <li>Shift + V: Toggle bulk action box</li>
+                    <li>Alt + N: Cycle button position</li>
+                    <li>Ctrl + Shift + R: Toggle refresh</li>
+                    <li>Alt + H: Toggle shortcut list on iNaturalist page</li>
+                    <li>Alt + S: Cycle button sets on iNaturalist page</li>
+                    <li>Alt + M: Toggle Bulk Action Mode on iNaturalist page</li>
+                    <li>Ctrl + A: Select all observations (in bulk mode)</li>
+                    <li>Ctrl + Shift + A: Clear all selections (in bulk mode)</li>
+                    <li>Ctrl + Click: Open identify modal for observation (in bulk mode)</li>
+                </ul>
             </div>
         </div>
-    </div>
-    <div class="hardcoded-shortcuts">
-        <h2 id="hardcoded-shortcuts-toggle">General Shortcuts [+]</h2>
-        <ul id="hardcoded-shortcuts-list" style="display: none;">
-            <li>Shift + B: Toggle button visibility</li>
-            <li>Shift + V: Toggle bulk action box</li>
-            <li>Alt + N: Cycle button position</li>
-            <li>Ctrl + Shift + R: Toggle refresh</li>
-            <li>Alt + H: Toggle shortcut list on iNaturalist page</li>
-            <li>Alt + S: Cycle button sets on iNaturalist page</li>
-            <li>Alt + M: Toggle Bulk Action Mode on iNaturalist page</li> 
-        </ul>
     </div>
     <div class="import-export-container">
         <button id="exportButton">Export Configurations</button>

@@ -44,6 +44,8 @@ document.addEventListener('DOMContentLoaded', function() {
     displayLists();
     loadUndoRecords(); // For the modal, if it's present or built dynamically
     loadAutoFollowSettings();
+    loadBulkActionSettings();
+    loadButtonLayoutSettings();
     updateSortButtons();
 
     // Event Listeners for main configuration form
@@ -61,6 +63,14 @@ document.addEventListener('DOMContentLoaded', function() {
     if (openBulkActionsButton) { // Good practice to check if element exists
         openBulkActionsButton.addEventListener('click', () => {
             browserAPI.runtime.sendMessage({ action: "openBulkActionsPage" });
+        });
+    }
+
+    // Event Listener for phenology predictor button
+    const openPhenoPredictorButton = document.getElementById('openPhenoPredictorButton');
+    if (openPhenoPredictorButton) {
+        openPhenoPredictorButton.addEventListener('click', () => {
+            browserAPI.runtime.sendMessage({ action: "openPhenoPredictorPage" });
         });
     }
 
@@ -86,6 +96,14 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('preventTaxonFollow').addEventListener('change', saveAutoFollowSettings);
     document.getElementById('preventFieldFollow').addEventListener('change', saveAutoFollowSettings);
     document.getElementById('preventTaxonReview').addEventListener('change', saveAutoFollowSettings);
+
+    // Event Listener for bulk action settings
+    document.getElementById('autoRefreshAfterBulk').addEventListener('change', saveBulkActionSettings);
+
+    // Event Listeners for button layout settings
+    document.getElementById('buttonMinWidth').addEventListener('change', saveButtonLayoutSettings);
+    document.getElementById('verticalButtonLayout').addEventListener('change', saveButtonLayoutSettings);
+    document.getElementById('buttonContainerMaxWidth').addEventListener('change', saveButtonLayoutSettings);
 
     // Event Listeners for custom list management
     const createListButton = document.getElementById('createList');
@@ -127,6 +145,16 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
+    const advancedSettingsToggle = document.getElementById('advanced-settings-toggle');
+    const advancedSettingsContainer = document.getElementById('advanced-settings-container');
+    if (advancedSettingsToggle && advancedSettingsContainer) {
+        advancedSettingsToggle.addEventListener('click', function() {
+            const isHidden = advancedSettingsContainer.style.display === 'none';
+            advancedSettingsContainer.style.display = isHidden ? 'block' : 'none';
+            advancedSettingsToggle.textContent = isHidden ? 'Advanced Settings [-]' : 'Advanced Settings [+]';
+        });
+    }
+
     const preventionToggle = document.getElementById('auto-prevention-toggle');
     const preventionSettings = document.getElementById('auto-prevention-settings');
     if (preventionToggle && preventionSettings) {
@@ -136,6 +164,50 @@ document.addEventListener('DOMContentLoaded', function() {
             preventionToggle.textContent = isHidden ? 'Prevent Auto-reviewed/Followed [-]' : 'Prevent Auto-reviewed/Followed [+]';
         });
     }
+
+    const highlightToggle = document.getElementById('selection-highlight-toggle');
+    const highlightSettings = document.getElementById('selection-highlight-settings');
+    if (highlightToggle && highlightSettings) {
+        highlightToggle.addEventListener('click', function() {
+            const isHidden = highlightSettings.style.display === 'none';
+            highlightSettings.style.display = isHidden ? 'block' : 'none';
+            highlightToggle.textContent = isHidden ? 'Selection Highlight Color [-]' : 'Selection Highlight Color [+]';
+        });
+    }
+
+    const bulkRefreshToggle = document.getElementById('bulk-refresh-toggle');
+    const bulkRefreshSettings = document.getElementById('bulk-refresh-settings');
+    if (bulkRefreshToggle && bulkRefreshSettings) {
+        bulkRefreshToggle.addEventListener('click', function() {
+            const isHidden = bulkRefreshSettings.style.display === 'none';
+            bulkRefreshSettings.style.display = isHidden ? 'block' : 'none';
+            bulkRefreshToggle.textContent = isHidden ? 'Bulk Action Settings [-]' : 'Bulk Action Settings [+]';
+        });
+    }
+
+    const buttonLayoutToggle = document.getElementById('button-layout-toggle');
+    const buttonLayoutSettings = document.getElementById('button-layout-settings');
+    if (buttonLayoutToggle && buttonLayoutSettings) {
+        buttonLayoutToggle.addEventListener('click', function() {
+            const isHidden = buttonLayoutSettings.style.display === 'none';
+            buttonLayoutSettings.style.display = isHidden ? 'block' : 'none';
+            buttonLayoutToggle.textContent = isHidden ? 'Button Layout [-]' : 'Button Layout [+]';
+        });
+    }
+
+    loadHighlightColor();
+
+    document.getElementById('customHighlightColor').addEventListener('change', function(e) {
+        saveHighlightColor(e.target.value);
+    });
+
+    document.querySelectorAll('.color-preset').forEach(button => {
+        button.addEventListener('click', function() {
+            const color = this.dataset.color;
+            document.getElementById('customHighlightColor').value = color;
+            saveHighlightColor(color);
+        });
+    });
     
     // Modal related (if applicable)
     const showUndoRecordsButton = document.getElementById('showUndoRecordsButton');
@@ -2721,7 +2793,7 @@ function createListImportModal(importedLists, existingLists) {
 
 function loadAutoFollowSettings() {
     browserAPI.storage.local.get(
-        ['preventTaxonFollow', 'preventFieldFollow', 'preventTaxonReview'], 
+        ['preventTaxonFollow', 'preventFieldFollow', 'preventTaxonReview'],
         function(data) {
             document.getElementById('preventTaxonFollow').checked = !!data.preventTaxonFollow;
             document.getElementById('preventFieldFollow').checked = !!data.preventFieldFollow;
@@ -2737,4 +2809,51 @@ function saveAutoFollowSettings() {
         preventTaxonReview: document.getElementById('preventTaxonReview').checked
     };
     browserAPI.storage.local.set(settings);
+}
+
+function loadBulkActionSettings() {
+    browserAPI.storage.local.get(['autoRefreshAfterBulk'], function(data) {
+        document.getElementById('autoRefreshAfterBulk').checked = !!data.autoRefreshAfterBulk;
+    });
+}
+
+function saveBulkActionSettings() {
+    const settings = {
+        autoRefreshAfterBulk: document.getElementById('autoRefreshAfterBulk').checked
+    };
+    browserAPI.storage.local.set(settings);
+}
+
+function loadButtonLayoutSettings() {
+    browserAPI.storage.local.get(['buttonMinWidth', 'verticalButtonLayout', 'buttonContainerMaxWidth'], function(data) {
+        document.getElementById('buttonMinWidth').value = data.buttonMinWidth || 100;
+        document.getElementById('verticalButtonLayout').checked = !!data.verticalButtonLayout;
+        document.getElementById('buttonContainerMaxWidth').value = data.buttonContainerMaxWidth || 600;
+    });
+}
+
+function saveButtonLayoutSettings() {
+    const settings = {
+        buttonMinWidth: parseInt(document.getElementById('buttonMinWidth').value) || 100,
+        verticalButtonLayout: document.getElementById('verticalButtonLayout').checked,
+        buttonContainerMaxWidth: parseInt(document.getElementById('buttonContainerMaxWidth').value) || 600
+    };
+    browserAPI.storage.local.set(settings);
+}
+
+function loadHighlightColor() {
+    browserAPI.storage.local.get(['highlightColor'], function(data) {
+        const color = data.highlightColor || '#FF6600';
+        document.getElementById('customHighlightColor').value = color;
+        updateHighlightPreview(color);
+    });
+}
+
+function saveHighlightColor(color) {
+    browserAPI.storage.local.set({ highlightColor: color });
+    updateHighlightPreview(color);
+}
+
+function updateHighlightPreview(color) {
+    document.getElementById('highlightPreview').style.borderColor = color;
 }
