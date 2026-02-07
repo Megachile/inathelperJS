@@ -1,0 +1,51 @@
+{
+  "manifest_version": 3,
+  "name": "iNaturalist Metadata Tool",
+  "version": "3.0",
+  "permissions": ["identity","activeTab", "storage", "webRequest","tabs"],
+  "host_permissions": ["https://api.inaturalist.org/*", "https://www.inaturalist.org/*"],
+  "action": {
+      "default_icon": {
+      "16": "images/icon16.png",
+      "48": "images/icon48.png",
+      "128": "images/icon128.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js",
+    "scripts": ["background.js"]
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.inaturalist.org/observations/identify*",
+        "https://www.inaturalist.org/observations/*"
+  ],
+  "exclude_matches": [
+      "https://www.inaturalist.org/observations/upload*"
+    ],
+      "js": ["shared_api.js","content.js"],
+      "run_at": "document_end"
+    }
+],
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "ofextension@gallformers.com"
+    }
+  },
+  "web_accessible_resources": [{
+    "resources": ["leaflet.js", "leaflet.css", "images/*"],
+    "matches": ["<all_urls>"]
+  }],
+  "oauth2": {
+  "client_id": "e2RUzw_g08SfNA_XeckoECYgPu9g0FDefi4wQDbYXNE",
+  "scopes": [
+      "write",
+      "login"
+    ]
+}
+}

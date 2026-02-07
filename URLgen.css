@@ -1,0 +1,614 @@
+/* shared_styles.css */
+
+body {
+  font-family: Arial, sans-serif;
+  line-height: 1.6;
+  margin: 0;
+  padding: 20px;
+  background-color: #f4f4f4;
+  padding-bottom: 200px;
+}
+
+#urlOutputs {
+position: fixed;
+bottom: 0;
+left: 0;
+right: 0;
+background-color: white;
+padding: 20px;
+box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
+z-index: 1000;
+margin-top: 0;
+display: block; /* Always visible */
+}
+
+#plainUrlOutput {
+margin-bottom: 10px;
+position: relative;
+}
+
+#plainUrlText {
+width: 100%;
+padding: 10px;
+margin-bottom: 10px;
+border: 1px solid #ccc;
+border-radius: 4px;
+font-family: monospace;
+resize: none;
+}
+
+#buttonOutputs {
+display: flex;
+gap: 10px;
+justify-content: stretch;
+}
+
+.url-button {
+flex: 1;
+padding: 15px 0;
+margin: 0;
+font-size: 18px;
+border-radius: 4px;
+transition: background-color 0.3s;
+}
+
+#copyUrlButton {
+position: absolute;
+right: 10px;
+top: 10px;
+background-color: #f0f0f0;
+border: 1px solid #ccc;
+border-radius: 3px;
+padding: 5px 10px;
+cursor: pointer;
+font-size: 16px;
+z-index: 1;
+}
+
+#copyUrlButton:hover {
+background-color: #e0e0e0;
+}
+
+#generateUrlButton {
+display: none;
+}
+
+h1, h2 {
+  color: #333;
+}
+
+fieldset {
+  border: 1px solid #ddd;
+  padding: 10px;
+  margin-bottom: 20px;
+  background-color: #fff;
+}
+
+legend {
+  font-weight: bold;
+  color: #444;
+}
+
+input[type="text"], input[type="number"], select, textarea {
+  width: 100%;
+  padding: 8px;
+  margin-bottom: 10px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+button {
+  background-color: #4CAF50;
+  color: white;
+  padding: 10px 15px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 16px;
+}
+
+button:hover {
+  background-color: #45a049;
+}
+
+.action-item {
+  border: 1px solid #ddd;
+  padding: 10px;
+  margin-bottom: 10px;
+  background-color: #f9f9f9;
+}
+
+.autocomplete-suggestions {
+  border: 1px solid #ddd;
+  background: #fff;
+  overflow: auto;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+.autocomplete-suggestion {
+  padding: 5px 10px;
+  cursor: pointer;
+}
+
+.autocomplete-suggestion:hover {
+  background-color: #f0f0f0;
+}
+
+.taxonSuggestions {
+  position: relative;
+  top: 100%;
+  left: 0;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  background-color: white;
+  border-radius: 4px;
+  border: 1px solid #ddd;
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 1000;
+}
+.taxonSuggestion {
+  display: flex;
+  align-items: center;
+  padding: 5px;
+  cursor: pointer;
+}
+.taxonSuggestion:hover {
+  background-color: #f0f0f0;
+}
+
+.date-input-container {
+  display: none;
+  margin-top: 10px;
+  margin-left: 20px;
+}
+
+#monthCheckboxes {
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid #ccc;
+  padding: 10px;
+  margin-top: 10px;
+}
+
+#yearSelect {
+  width: 100%;
+  height: 200px;
+}
+
+.date-selectors-container {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.date-selector {
+  flex: 1;
+  min-width: 300px;
+}
+
+@media (max-width: 768px) {
+  .date-selectors-container {
+      flex-direction: column;
+  }
+}
+.collapsible-container {
+  margin-bottom: 20px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+.collapse-toggle {
+  background-color: #4CAF50; /* A green background for better visibility */
+  color: white; /* White text on green background */
+  border: none;
+  padding: 10px 15px;
+  text-align: left;
+  width: 100%;
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: bold;
+}
+
+.collapse-toggle:hover {
+  background-color: #45a049; /* Darker green on hover */
+}
+
+fieldset.collapsed {
+  display: none;
+}
+
+fieldset:not(.collapsed) {
+  background-color: #f9f9f9; /* Light gray background when expanded */
+  padding: 15px;
+  border-top: 1px solid #ccc;
+}
+
+/* Style for the checkboxes and labels */
+fieldset input[type="checkbox"] {
+  margin-right: 5px;
+}
+
+fieldset label {
+  color: #333; /* Dark gray text for labels */
+  font-size: 14px;
+}
+
+.categories-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 10px;
+}
+
+.category-item {
+  display: flex;
+  align-items: center;
+}
+
+.category-item input[type="checkbox"] {
+  margin-right: 5px;
+}
+
+.toggle-group {
+  display: flex;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.toggle-group label:first-child {
+  margin-right: 10px;
+  min-width: 120px;
+}
+
+.toggle-group input[type="radio"] {
+  display: none;
+}
+
+.toggle-group label:not(:first-child) {
+  padding: 5px 10px;
+  font-size: 14px;
+  background-color: #f1f1f1;
+  cursor: pointer;
+  transition: background-color 0.3s;
+  border: 1px solid #ccc;
+}
+
+.toggle-group label:nth-child(3) {
+  border-radius: 5px 0 0 5px;
+}
+
+.toggle-group label:last-child {
+  border-radius: 0 5px 5px 0;
+}
+
+.toggle-group input[type="radio"]:checked + label {
+  background-color: #4CAF50;
+  color: white;
+}
+
+#addButtonsContainer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+#addButtonsContainer button {
+  flex: 1;
+  min-width: 150px;
+  padding: 10px;
+  background-color: #4CAF50;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 0.3s;
+}
+
+#addButtonsContainer button:hover {
+  background-color: #45a049;
+}
+
+#actionsContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.action-box {
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 15px;
+  background-color: #f9f9f9;
+}
+
+.action-box .action-type {
+  font-weight: bold;
+  margin-bottom: 10px;
+  color: #333;
+}
+
+.field-group {
+  margin-bottom: 15px;
+}
+
+.field-group input[type="text"],
+.field-group select {
+  width: 100%;
+  padding: 8px;
+  margin-bottom: 5px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+.field-group button {
+  background-color: #f44336;
+  color: white;
+  border: none;
+  padding: 5px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.field-group button:hover {
+  background-color: #d32f2f;
+}
+
+#mapContainer {
+  width: 100%;
+  height: 400px;
+  margin-bottom: 20px;
+}
+
+#geographicFieldset:not(.collapsed) #mapContainer {
+  display: block !important;
+  height: 400px !important;
+  width: 100% !important;
+}
+
+#boundingBoxInputs, #circleInputs, #accInputs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+#boundingBoxInputs input, #circleInputs input, #accInputs input {
+  flex: 1;
+  min-width: 150px;
+}
+
+#drawRectangle.active, #drawCircle.active {
+  background-color: #ddd;
+}.input-group {
+  display: flex;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.input-group label {
+  width: 120px;
+  text-align: right;
+  margin-right: 10px;
+  flex-shrink: 0;
+}
+
+.input-group input {
+  flex-grow: 1;
+  width: calc(100% - 130px); /* Adjust if needed */
+}
+
+@media (max-width: 600px) {
+  .input-group {
+      flex-direction: column;
+      align-items: flex-start;
+  }
+
+  .input-group label {
+      width: 100%;
+      text-align: left;
+      margin-bottom: 5px;
+  }
+
+  .input-group input {
+      width: 100%;
+  }
+}
+
+#observationSources {
+display: flex;
+flex-wrap: wrap;
+gap: 10px;
+margin-bottom: 10px;
+}
+
+#observationSources label {
+display: flex;
+align-items: center;
+}
+
+#observationSources input[type="checkbox"] {
+margin-right: 5px;
+}
+
+[data-tooltip] {
+cursor: help;
+}
+
+.tooltip {
+position: absolute;
+background-color: #333;
+color: #fff;
+padding: 5px 10px;
+border-radius: 4px;
+font-size: 14px;
+max-width: 200px;
+word-wrap: break-word;
+text-align: center;
+z-index: 1000;
+opacity: 0;
+visibility: hidden;
+transition: opacity 0.3s, visibility 0.3s;
+}
+
+.tooltip-toggle {
+display: flex;
+align-items: center;
+margin-bottom: 10px;
+}
+
+.switch {
+position: relative;
+display: inline-block;
+width: 60px;
+height: 34px;
+margin-right: 10px;
+}
+
+.switch input {
+opacity: 0;
+width: 0;
+height: 0;
+}
+
+.slider {
+position: absolute;
+cursor: pointer;
+top: 0;
+left: 0;
+right: 0;
+bottom: 0;
+background-color: #ccc;
+transition: .4s;
+}
+
+.slider:before {
+position: absolute;
+content: "";
+height: 26px;
+width: 26px;
+left: 4px;
+bottom: 4px;
+background-color: white;
+transition: .4s;
+}
+
+input:checked + .slider {
+background-color: #2196F3;
+}
+
+input:checked + .slider:before {
+transform: translateX(26px);
+}
+
+.slider.round {
+border-radius: 34px;
+}
+
+.slider.round:before {
+border-radius: 50%;
+}
+#urlOutputs {
+margin-top: 20px;
+display: none;
+}
+
+#plainUrlText {
+width: 100%;
+padding: 5px;
+box-sizing: border-box;
+resize: vertical;
+}
+
+#plainUrlOutput {
+margin-bottom: 10px;
+position: relative;
+}
+
+#copyUrlButton {
+position: absolute;
+right: 5px;
+top: 5px;
+background-color: #f0f0f0;
+border: 1px solid #ccc;
+border-radius: 3px;
+padding: 5px 10px;
+cursor: pointer;
+font-size: 16px;
+}
+
+#copyUrlButton:hover {
+background-color: #e0e0e0;
+}
+.url-button {
+display: block;
+width: 100%;
+padding: 15px 0;
+margin-bottom: 10px;
+background-color: #4CAF50;
+color: white;
+text-decoration: none;
+text-align: center;
+font-size: 18px;
+border: none;
+cursor: pointer;
+}
+
+#identifyButton {
+background-color: #008CBA;
+}
+
+#exploreButton {
+background-color: #4CAF50;
+}
+
+#customListsContainer {
+max-height: 200px;
+overflow-y: auto;
+border: 1px solid #ccc;
+padding: 10px;
+}
+
+.custom-list-checkbox {
+margin-bottom: 5px;
+}
+
+.custom-list-checkbox label {
+margin-left: 5px;
+}
+.action-box.disabled {
+opacity: 0.6 !important;
+background-color: #e0e0e0 !important;
+position: relative;
+}
+
+.action-box.disabled::before {
+content: '';
+position: absolute;
+top: 0;
+left: 0;
+right: 0;
+bottom: 0;
+background-color: rgba(255, 255, 255, 0.3);
+cursor: pointer;
+/* Remove pointer-events from this overlay */
+pointer-events: none;
+z-index: 1;
+}
+
+/* Change this to only disable specific elements */
+.action-box.disabled button,
+.action-box.disabled label,
+.action-box.disabled input[type="checkbox"],
+.action-box.disabled input[type="radio"] {
+pointer-events: none;
+}
+
+/* Keep inputs and autocomplete functional */
+.action-box.disabled input[type="text"],
+.action-box.disabled select,
+.action-box.disabled .autocomplete-suggestions {
+pointer-events: auto;
+}

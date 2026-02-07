@@ -1,0 +1,757 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>iNaturalist Metadata Tool Configuration</title>
+    <style>
+   body { 
+    width: 100%; 
+    max-width: 800px; 
+    margin: 0 auto; 
+    padding: 20px; 
+    font-family: Arial, sans-serif; 
+}
+
+.toggle-container {
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+}
+
+.toggle-container label {
+    margin-right: 10px;
+    font-weight: bold;
+}
+
+.inline-radio {
+    display: flex;
+    gap: 10px; /* Adjust spacing between options */
+}
+
+.inline-radio input[type="radio"] {
+    margin-right: 5px; /* Space between button and text */
+    accent-color: #0073e6; /* Optional: Change radio button color */
+}
+
+.inline-radio label {
+    margin-right: 15px; /* Space between label and next option */
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+}
+
+
+input, select { 
+    width: 100%; 
+    margin-bottom: 10px; 
+    padding: 5px; 
+}
+/* Default button styling - keep existing green for primary actions */
+button { 
+    padding: 10px; 
+    background-color: #4CAF50; 
+    color: white; 
+    border: none; 
+    cursor: pointer; 
+    margin-right: 10px; 
+}
+
+button:hover { 
+    background-color: #45a049; 
+}
+
+/* Add Action button - change to blue to differentiate */
+#addActionButton {
+    background-color: #2196F3; /* Blue */
+    margin-bottom: 30px; /* Add significant spacing below */
+}
+
+#addActionButton:hover {
+    background-color: #1976D2; /* Darker blue on hover */
+}
+
+/* Remove Action buttons within each action item - make them red for clarity */
+.removeActionButton {
+    background-color: #f44336; /* Red */
+    margin-bottom: 15px;
+}
+
+.removeActionButton:hover {
+    background-color: #d32f2f; /* Darker red on hover */
+}
+
+/* Save/Update and Cancel buttons container - add top margin for spacing */
+.button-container { 
+    display: flex; 
+    justify-content: flex-start; 
+    margin-bottom: 10px; 
+    margin-top: 30px; /* Add significant spacing above save/cancel buttons */
+    padding-top: 20px; /* Additional padding */
+    border-top: 1px solid #ddd; /* Optional: subtle separator line */
+}
+
+/* Keep Save/Update button green but make it more distinct */
+#saveButton {
+    background-color: #4CAF50; /* Keep green for primary save action */
+    width: 48%; 
+}
+
+#saveButton:hover {
+    background-color: #45a049;
+}
+
+/* Cancel button - make it red */
+#cancelButton { 
+    background-color: #f44336; /* Red */
+    width: 48%; 
+}
+
+#cancelButton:hover {
+    background-color: #d32f2f; /* Darker red on hover */
+}
+
+/* Configuration action buttons - different colors for different actions */
+.edit-button {
+    background-color: #FF9800; /* Orange */
+}
+
+.edit-button:hover {
+    background-color: #F57C00; /* Darker orange */
+}
+
+.duplicate-button {
+    background-color: #9C27B0; /* Purple */
+}
+
+.duplicate-button:hover {
+    background-color: #7B1FA2; /* Darker purple */
+}
+
+.delete-button {
+    background-color: #f44336; /* Red */
+}
+
+.delete-button:hover {
+    background-color: #d32f2f; /* Darker red */
+}
+
+/* List management buttons - make delete buttons red */
+.deleteList {
+    background-color: #f44336; /* Red */
+    color: white;
+}
+
+.deleteList:hover {
+    background-color: #d32f2f; /* Darker red on hover */
+}
+
+/* Configuration management buttons */
+.configuration-action-btn {
+    margin-right: 5px;
+    margin-bottom: 5px;
+}
+
+#deleteSelectedBtn {
+    background-color: #dc3545; /* Bootstrap red */
+    color: white;
+}
+
+#deleteSelectedBtn:hover {
+    background-color: #c82333;
+}
+
+#hideSelectedBtn, #showSelectedBtn {
+    background-color: #007bff; /* Bootstrap blue */
+    color: white;
+}
+
+#hideSelectedBtn:hover, #showSelectedBtn:hover {
+    background-color: #0056b3;
+}
+
+#disableSelectedBtn, #enableSelectedBtn {
+    background-color: #ffc107; /* Bootstrap yellow */
+    color: black;
+}
+
+#disableSelectedBtn:hover, #enableSelectedBtn:hover {
+    background-color: #e0a800;
+}
+
+/* Set management buttons - keep them neutral */
+.set-management-button {
+    background-color: #6c757d; /* Bootstrap secondary gray */
+    color: white;
+}
+
+.set-management-button:hover {
+    background-color: #5a6268;
+}
+
+/* Export/Import buttons */
+#exportButton, #importButton {
+    background-color: #17a2b8; /* Bootstrap info cyan */
+    color: white;
+}
+
+#exportButton:hover, #importButton:hover {
+    background-color: #138496;
+}
+
+.hidden { 
+    display: none; 
+}
+
+#ofUrlContainer {
+    margin-bottom: 20px;
+}
+
+.config-item {
+    background-color: #f5f5f5;
+    margin-bottom: 10px;
+    border-radius: 4px;
+}
+
+.configuration-checkbox {
+    margin-right: 10px;
+    flex: 0 0 auto;
+    width: 16px;
+    height: 16px;
+}
+
+.config-header {
+    padding: 10px;
+    display: flex;
+    align-items: center;
+}
+
+.config-name {
+    flex: 1;
+    margin-right: 10px;
+}
+
+.config-shortcut {
+    margin-right: 10px;
+}
+.commentInput textarea {
+    width: 100%;
+    min-height: 100px;
+    resize: vertical;
+}
+
+
+.toggle-details {
+    flex: 0 0 20px;
+    text-align: right;
+}
+
+.config-details {
+    padding: 10px;
+    border-top: 1px solid #ddd;
+}
+
+.button-actions {
+    margin-top: 10px;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.button-actions label {
+    display: flex;
+    align-items: center;
+    margin-right: 15px;
+}
+
+.button-actions input[type="checkbox"] {
+    margin-right: 5px;
+}
+
+.button-actions button {
+    margin-right: 5px;
+    margin-top: 5px;
+}
+
+.disabled-config {
+    opacity: 0.5;
+}
+
+#toggleSort {
+    margin-bottom: 15px;
+}
+
+#searchInput {
+    margin-bottom: 15px;
+    width: calc(100% - 10px);
+}
+
+.action-item {
+    display: flex;
+    flex-direction: column;
+}
+
+.action-item h4 {
+    margin-top: 0;
+    border-bottom: 1px solid #ddd;
+    padding-bottom: 5px;
+}
+
+.taxonComment {
+        width: 100%;
+        height: 60px;
+        margin-top: 5px;
+        resize: vertical;
+    }
+
+.action-item select,
+.action-item input,
+.action-item .fieldValueContainer {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.fieldValueContainer {
+    position: relative;
+}
+
+.fieldValue {
+    width: 100%;
+}
+
+#addActionButton {
+    margin-bottom: 20px;
+}
+.removeActionButton {
+    margin-bottom: 15px;
+}
+#shortcutContainer {
+    display: flex;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.modifier-checkboxes {
+    display: flex;
+    align-items: center;
+    margin-right: 10px;
+}
+
+.modifier-checkboxes label {
+    display: flex;
+    align-items: center;
+    margin-right: 10px;
+}
+
+.modifier-checkboxes input[type="checkbox"] {
+    margin-right: 5px;
+}
+
+#shortcut {
+    width: 50px;
+}
+.taxonSuggestions {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    background-color: white;
+    border-radius: 4px;
+    border: 1px solid #ddd;
+    max-height: 200px;
+    overflow-y: auto;
+    z-index: 1000;
+}
+
+.taxonSuggestion {
+    display: flex;
+    align-items: center;
+    padding: 5px;
+    cursor: pointer;
+}
+
+
+.taxonSuggestion:hover {
+    background-color: #f0f0f0;
+}
+.hardcoded-shortcuts {
+    margin-bottom: 20px;
+    padding: 10px;
+    background-color: #f5f5f5;
+    border-radius: 4px;
+}
+
+#hardcoded-shortcuts-toggle {
+    cursor: pointer;
+    user-select: none;
+}
+
+#auto-prevention-toggle, #hardcoded-shortcuts-toggle {
+    margin-bottom: 5px;
+    cursor: pointer;
+    user-select: none;
+}
+
+#hardcoded-shortcuts-list {
+    margin-top: 10px;
+    padding-left: 20px;
+}
+
+.taxonSuggestion img {
+    width: 40px;
+    height: 40px;
+    margin-right: 10px;
+    object-fit: cover;
+}
+
+.taxonSuggestion .taxon-name {
+    flex-grow: 1;
+}
+
+.taxonIdInputs, .ofInputs {
+    position: relative;
+}
+
+.taxonSuggestion .taxon-link {
+    color: #0000EE;
+    text-decoration: underline;
+}
+   .autocomplete-suggestions {
+        display: none;
+        position: absolute;
+        border: 1px solid #ddd;
+        background: white;
+        max-height: 200px;
+        overflow-y: auto;
+        z-index: 1000;
+        width: 100%;
+        box-sizing: border-box;
+    }
+
+    .autocomplete-suggestion {
+        padding: 5px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+    }
+
+    .autocomplete-suggestion:hover {
+        background-color: #f0f0f0;
+    }
+
+    .autocomplete-suggestion img {
+        width: 40px;
+        height: 40px;
+        margin-right: 10px;
+        object-fit: cover;
+    }
+    .sort-button {
+    font-weight: normal;
+    background-color: #f0f0f0;
+    color: #333;
+    padding: 5px 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+.sort-buttons-container {
+    margin-bottom: 20px; /* Adds space below the buttons */
+}
+.active-sort {
+    font-weight: bold;
+    background-color: #4CAF50;
+    color: white;
+    border-color: #45a049;
+}
+.inactive-sort {
+    opacity: 0.6;
+}
+    .autocomplete-suggestion .taxon-name,
+    .autocomplete-suggestion .project-name {
+        flex-grow: 1;
+    }
+
+    .autocomplete-suggestion .taxon-link,
+    .autocomplete-suggestion .project-link {
+        color: #0000EE;
+        text-decoration: underline;
+    }
+
+    #listManagement {
+    margin-bottom: 20px;
+  }
+  .list-item {
+    background-color: #f0f0f0;
+    padding: 10px;
+    margin-bottom: 10px;
+    border-radius: 5px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .list-name {
+    font-size: 18px;
+    font-weight: bold;
+  }
+  .list-actions button {
+    margin-left: 10px;
+  }
+  #setManagement {
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    }
+    #setSelector {
+        margin-right: 10px;
+    }
+    .set-management-button {
+        margin-right: 5px;
+    }
+    .selection-controls {
+    margin: 15px 0;
+    padding: 15px;
+    background-color: #f5f5f5;
+    border-radius: 4px;
+}
+
+#selectAllConfigs-label {
+    padding: 5px 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    background-color: #f0f0f0;
+    cursor: pointer;
+    font-size: 14px;
+    color: #333;
+}
+
+#selectAllConfigs-label:hover {
+    background-color: #e0e0e0;
+}
+
+.selected-count {
+    color: #666;
+    margin-left: auto;
+}
+
+.selection-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.select-all-label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.select-all-label input[type="checkbox"] {
+    margin-right: 5px;
+}
+
+.bulk-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.bulk-action-btn {
+    padding: 5px 10px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+.bulk-action-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+#deleteSelectedBtn {
+    background-color: #dc3545;
+    color: white;
+}
+
+#hideSelectedBtn, #showSelectedBtn {
+    background-color: #007bff;
+    color: white;
+}
+
+#disableSelectedBtn, #enableSelectedBtn {
+    background-color: #ffc107;
+    color: black;
+}
+
+.selection-btn {
+    padding: 5px 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    background-color: #f0f0f0;
+    cursor: pointer;
+    font-size: 14px;
+    color: #333;
+}
+
+.selection-btn:hover {
+    background-color: #e0e0e0;
+}
+
+.settings-section {
+    background-color: #f5f5f5;
+    padding: 15px;
+    border-radius: 4px;
+    margin-bottom: 20px;
+}
+
+.settings-section h3 {
+    margin-top: 0;
+    margin-bottom: 15px;
+    color: #333;
+    font-size: 18px;
+}
+
+.setting-item {
+    display: flex;
+    align-items: center;
+    margin-bottom: 10px;
+    padding: 5px 0;
+}
+
+.setting-item:last-child {
+    margin-bottom: 0;
+}
+
+.setting-item input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    margin-right: 10px;
+    cursor: pointer;
+    accent-color: #4CAF50;
+    flex: 0 0 auto;
+}
+
+.setting-item label {
+    cursor: pointer;
+    font-size: 14px;
+    color: #333;
+    line-height: 1.4;
+    flex: 1;
+    user-select: none;
+}
+
+.setting-item:hover {
+    background-color: #eaeaea;
+    border-radius: 4px;
+}
+
+.setting-item input[type="checkbox"]:checked + label {
+    font-weight: 500;
+    color: #1a1a1a;
+}
+    </style>
+</head>
+<body>
+    <h1>iNaturalist Metadata Tool Configuration</h1>
+    <div id="setManagement">
+        <select id="setSelector"></select>
+        <button id="createSetButton" class="set-management-button">Create New Set</button>
+        <button id="duplicateSetButton" class="set-management-button">Duplicate Set</button>
+        <button id="renameSetButton" class="set-management-button">Rename Set</button>
+        <button id="removeSetButton" class="set-management-button">Remove Set</button>
+    </div>
+    <button id="openBulkActionsButton">Open Advanced Filters URL Generator</button>
+    <button id="showUndoRecordsButton">Show Bulk Action Records</button>
+    <div id="storageStatus" style="margin-top: 20px; text-align: center; font-size: 0.9em; color: #555;">
+        Storage Usage: Loading...
+    </div>    
+    <div class="hardcoded-shortcuts">
+        <h2 id="auto-prevention-toggle">Prevent Auto-reviewed/Followed [+]</h2>
+        <div id="auto-prevention-settings" style="display: none; margin-top: 10px;">          <div class="setting-item">
+                <input type="checkbox" id="preventTaxonFollow">
+                <label for="preventTaxonFollow">Prevent automatic following when adding taxon IDs</label>
+            </div>
+            <div class="setting-item">
+                <input type="checkbox" id="preventFieldFollow">
+                <label for="preventFieldFollow">Prevent automatic following when adding observation fields</label>
+            </div>
+            <div class="setting-item">
+                <input type="checkbox" id="preventTaxonReview">
+                <label for="preventTaxonReview">Prevent automatic reviewing when adding taxon IDs</label>
+            </div>
+        </div>
+    </div>
+    <div class="hardcoded-shortcuts">
+        <h2 id="hardcoded-shortcuts-toggle">General Shortcuts [+]</h2>
+        <ul id="hardcoded-shortcuts-list" style="display: none;">
+            <li>Shift + B: Toggle button visibility</li>
+            <li>Shift + V: Toggle bulk action box</li>
+            <li>Alt + N: Cycle button position</li>
+            <li>Ctrl + Shift + R: Toggle refresh</li>
+            <li>Alt + H: Toggle shortcut list on iNaturalist page</li>
+            <li>Alt + S: Cycle button sets on iNaturalist page</li>
+            <li>Alt + M: Toggle Bulk Action Mode on iNaturalist page</li> 
+        </ul>
+    </div>
+    <div class="import-export-container">
+        <button id="exportButton">Export Configurations</button>
+        <input type="file" id="importInput" accept=".json" style="display: none;">
+        <button id="importButton">Import Configurations</button>
+    </div>
+    <h2>Add New Custom Button</h2>
+    <input type="text" id="buttonName" placeholder="Button Name">
+    <div id="shortcutContainer">
+        <div class="modifier-checkboxes">
+            <label><input type="checkbox" id="ctrlKey"> Ctrl</label>
+            <label><input type="checkbox" id="shiftKey"> Shift</label>
+            <label><input type="checkbox" id="altKey"> Alt</label>
+        </div>
+        <input type="text" id="shortcut" placeholder="Key" maxlength="2">
+    </div>
+    
+    <h3>Actions</h3>
+    <div id="actionsContainer"></div>
+    <button id="addActionButton">Add Action</button>
+
+    <div class="button-container">
+        <button id="saveButton">Save Configuration</button>
+        <button id="cancelButton">Cancel</button>
+    </div>
+
+    <h2>Existing Configurations</h2>
+    <div id="configControls">
+        <input type="text" id="searchInput" placeholder="Search configurations...">
+        <div id="sortControls" class="sort-buttons-container">
+            <button id="toggleDateSort" class="sort-button">Sorted Newest First</button>
+            <button id="toggleAlphaSort" class="sort-button">Sorted A-Z</button>
+        </div>
+        <div class="configuration-controls">
+            <div class="selection-header">
+                <button id="selectAllConfigs" class="selection-btn">Select All</button>
+                <button id="clearSelectionBtn" class="selection-btn">Clear Selection</button>
+                <button id="expandSelectedConfigsBtn" class="selection-btn configuration-action-btn">Expand Selected</button>
+                <button id="collapseSelectedConfigsBtn" class="selection-btn configuration-action-btn">Collapse Selected</button>
+                <span id="selectedCount" class="selected-count">0 selected</span>
+            </div>
+            <div class="configuration-actions">
+                <button id="deleteSelectedBtn" class="configuration-action-btn">Delete Selected</button>
+                <button id="hideSelectedBtn" class="configuration-action-btn">Hide Selected</button>
+                <button id="showSelectedBtn" class="configuration-action-btn">Show Selected</button>
+                <button id="disableSelectedBtn" class="configuration-action-btn">Disable Selected</button>
+                <button id="enableSelectedBtn" class="configuration-action-btn">Enable Selected</button>
+            </div>
+        </div>
+    </div>
+    <div id="buttonConfigs"></div>
+    <h2>Personal Lists</h2>
+    <div id="listManagement">
+    <input type="text" id="newListName" placeholder="New List Name">
+    <button id="createList">Create List</button>
+    <div id="existingLists"></div>
+    </div>
+    <script src="shared_api.js"></script>
+    <script src="options.js"></script>
+</body>
+</html>

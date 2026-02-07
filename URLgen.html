@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Filters URL Generator</title>
+    <link rel="stylesheet" href="URLgen.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+</head>
+<body>
+    <fieldset>
+        <legend>Select Filters for iNaturalist Identify Page</legend>
+        <fieldset id="tooltip-toggle">
+          <label class="switch">
+              <input type="checkbox" id="tooltipToggle">
+              <span class="slider round"></span>
+          </label>
+          <span>Enable Tooltips</span>
+        </fieldset>
+        <fieldset>
+          <button id="resetButton" type="button">Reset All Inputs</button>
+        </fieldset>        
+        <fieldset>
+            <legend>Quality Grade</legend>
+            <label><input type="checkbox" name="quality_grade" value="casual"> Casual</label>
+            <label><input type="checkbox" name="quality_grade" value="needs_id"> Needs ID</label>
+            <label><input type="checkbox" name="quality_grade" value="research" checked> Research Grade</label>
+        </fieldset>
+        
+        <fieldset>
+            <legend>Reviewed Status</legend>
+            <label><input type="radio" name="reviewed" value="any"> Any</label>
+            <label><input type="radio" name="reviewed" value="true"> Yes</label>
+            <label><input type="radio" name="reviewed" value="false" checked> No</label>
+        </fieldset>
+
+        <div class="collapsible-container">
+          <button id="toggleCategories" class="collapse-toggle">Taxon Categories ▼</button>
+          <fieldset id="categoriesFieldset" class="collapsed">
+            <div class="categories-grid">
+              <div class="category-item">
+                <input type="checkbox" id="category-Aves" name="categories" value="Aves">
+                <label for="category-Aves">Birds</label>
+              </div>
+              <div class="category-item">
+                <input type="checkbox" id="category-Amphibia" name="categories" value="Amphibia">
+                <label for="category-Amphibia">Amphibians</label>
+              </div>
+              <div class="category-item">
+                <input type="checkbox" id="category-Reptilia" name="categories" value="Reptilia">
+                <label for="category-Reptilia">Reptiles</label>
+              </div>
+              <div class="category-item">
+                <input type="checkbox" id="category-Mammalia" name="categories" value="Mammalia">
+                <label for="category-Mammalia">Mammals</label>
+              </div>
+              <div class="category-item">
+                <input type="checkbox" id="category-Actinopterygii" name="categories" value="Actinopterygii">
+                <label for="category-Actinopterygii">Ray-finned Fishes</label>
+              </div>
+              <div class="category-item">
+                <input type="checkbox" id="category-Mollusca" name="categories" value="Mollusca">
+                <label for="category-Mollusca">Mollusks</label>
+              </div>
+              <div class="category-item">
+                <input type="checkbox" id="category-Arachnida" name="categories" value="Arachnida">
+                <label for="category-Arachnida">Arachnids</label>
+              </div>
+              <div class="category-item">
+                <input type="checkbox" id="category-Insecta" name="categories" value="Insecta">
+                <label for="category-Insecta">Insects</label>
+              </div>
+              <div class="category-item">
+                <input type="checkbox" id="category-Plantae" name="categories" value="Plantae">
+                <label for="category-Plantae">Plants</label>
+              </div>
+              <div class="category-item">
+                <input type="checkbox" id="category-Fungi" name="categories" value="Fungi">
+                <label for="category-Fungi">Fungi</label>
+              </div>
+              <div class="category-item">
+                <input type="checkbox" id="category-Protozoa" name="categories" value="Protozoa">
+                <label for="category-Protozoa">Protozoans</label>
+              </div>
+              <div class="category-item">
+                <input type="checkbox" id="category-unknown" name="categories" value="unknown">
+                <label for="category-unknown" data-tooltip="Unknown (Includes Bacteria, Archaea, Viruses, and Life)">Unknown</label>
+            </div>
+            </div>
+          </fieldset>
+        </div>
+  
+        <div class="collapsible-container">
+          <button id="toggleSortingRanking" class="collapse-toggle">Sorting and Ranking ▼</button>
+          <fieldset id="sortingRankingFieldset" class="collapsed">
+          <div>
+            <label for="sortBy">Sort By:</label>
+            <select id="sortBy">
+              <option value="created_at">Date Added</option>
+              <option value="observed_on">Date Observed</option>
+              <option value="updated_at">Date Updated</option>
+              <option value="votes">Faves</option>
+              <option value="random">Random</option>
+            </select>
+          </div>
+
+          <div>
+            <label for="sortOrder">Order:</label>
+            <select id="sortOrder">
+              <option value="desc">Descending</option>
+              <option value="asc">Ascending</option>
+            </select>
+          </div>
+
+          <div>
+            <label for="rankHigh">Rank (High):</label>
+            <select id="rankHigh">
+                    <option value="">Any</option>
+                    <option value="kingdom">Kingdom</option>
+                    <option value="phylum">Phylum</option>
+                    <option value="subphylum">Subphylum</option>
+                    <option value="superclass">Superclass</option>
+                    <option value="class">Class</option>
+                    <option value="subclass">Subclass</option>
+                    <option value="infraclass">Infraclass</option>
+                    <option value="subterclass">Subterclass</option>
+                    <option value="superorder">Superorder</option>
+                    <option value="order">Order</option>
+                    <option value="suborder">Suborder</option>
+                    <option value="infraorder">Infraorder</option>
+                    <option value="parvorder">Parvorder</option>
+                    <option value="zoosection">Zoosection</option>
+                    <option value="zoosubsection">Zoosubsection</option>
+                    <option value="superfamily">Superfamily</option>
+                    <option value="epifamily">Epifamily</option>
+                    <option value="family">Family</option>
+                    <option value="subfamily">Subfamily</option>
+                    <option value="supertribe">Supertribe</option>
+                    <option value="tribe">Tribe</option>
+                    <option value="subtribe">Subtribe</option>
+                    <option value="genus">Genus</option>
+                    <option value="genushybrid">Genus hybrid</option>
+                    <option value="subgenus">Subgenus</option>
+                    <option value="section">Section</option>
+                    <option value="subsection">Subsection</option>
+                    <option value="complex">Complex</option>
+                    <option value="species">Species</option>
+                    <option value="hybrid">Hybrid</option>
+                    <option value="subspecies">Subspecies</option>
+                    <option value="variety">Variety</option>
+                    <option value="form">Form</option>
+                    <option value="infrahybrid">Infrahybrid</option>
+                  </select>
+          </div>
+
+          <div>
+            <label for="rankLow">Rank (Low):</label>
+            <select id="rankLow">
+                <option value="">Any</option>
+                <option value="kingdom">Kingdom</option>
+                <option value="phylum">Phylum</option>
+                <option value="subphylum">Subphylum</option>
+                <option value="superclass">Superclass</option>
+                <option value="class">Class</option>
+                <option value="subclass">Subclass</option>
+                <option value="infraclass">Infraclass</option>
+                <option value="subterclass">Subterclass</option>
+                <option value="superorder">Superorder</option>
+                <option value="order">Order</option>
+                <option value="suborder">Suborder</option>
+                <option value="infraorder">Infraorder</option>
+                <option value="parvorder">Parvorder</option>
+                <option value="zoosection">Zoosection</option>
+                <option value="zoosubsection">Zoosubsection</option>
+                <option value="superfamily">Superfamily</option>
+                <option value="epifamily">Epifamily</option>
+                <option value="family">Family</option>
+                <option value="subfamily">Subfamily</option>
+                <option value="supertribe">Supertribe</option>
+                <option value="tribe">Tribe</option>
+                <option value="subtribe">Subtribe</option>
+                <option value="genus">Genus</option>
+                <option value="genushybrid">Genus hybrid</option>
+                <option value="subgenus">Subgenus</option>
+                <option value="section">Section</option>
+                <option value="subsection">Subsection</option>
+                <option value="complex">Complex</option>
+                <option value="species">Species</option>
+                <option value="hybrid">Hybrid</option>
+                <option value="subspecies">Subspecies</option>
+                <option value="variety">Variety</option>
+                <option value="form">Form</option>
+                <option value="infrahybrid">Infrahybrid</option>
+              </select>
+          </div>
+
+          <div>
+            <label for="perPage">Results per page: (max 200)</label>
+            <input type="number" id="perPage" min="1" max="200" value="30">
+          </div>
+        </fieldset>
+        </div>
+
+        <div class="collapsible-container">
+            <button id="toggleAdditionalParams" class="collapse-toggle">Additional Search Parameters ▼</button>
+            <fieldset id="additionalParams" class="collapsed">    
+              <div id="customListSelector">
+                <label>Select Custom Lists:</label>
+                <div id="customListsContainer">
+                  <!-- Checkboxes will be populated dynamically -->
+                </div>
+              </div>  
+              <div>
+                <label for="listIdInput" data-tooltip="Restrict search to taxa in a specific iNaturalist list">List ID:</label>
+                <input type="text" id="listIdInput" placeholder="Enter List ID">
+              </div>
+          
+              <div>
+                <label for="descriptionTagInput">Description/Tag Search:</label>
+                <input type="text" id="descriptionTagInput" placeholder="Enter search term">
+                <div>
+                    <label>Search on:</label>
+                    <label><input type="radio" name="searchOn" value="all" checked> All</label>
+                    <label><input type="radio" name="searchOn" value="description"> Description</label>
+                    <label><input type="radio" name="searchOn" value="tags"> Tags</label>
+                    <label><input type="radio" name="searchOn" value="names"> Active ID Taxon Names</label>
+                    <label><input type="radio" name="searchOn" value="place"> Place Description</label>
+                </div>
+            </div>
+          
+              <div>
+                <label for="accountAgeMin" data-tooltip="Include only observations from users with accounts created more than this many weeks ago">Account Age (min weeks)</label>
+                <input type="number" id="accountAgeMin" min="0">
+              </div>
+          
+              <div>
+                <label for="accountAgeMax" data-tooltip="Include only observations from users with accounts created fewer than this many weeks ago">Account Age (max weeks)</label>
+                <input type="number" id="accountAgeMax" min="0">
+              </div>
+          
+              <div>
+                <label>Photo Licenses:</label>
+                <div id="photoLicenses">
+                  <label><input type="checkbox" name="photo_license" value="cc0"> CC0</label>
+                  <label><input type="checkbox" name="photo_license" value="cc-by"> CC-BY</label>
+                  <label><input type="checkbox" name="photo_license" value="cc-by-sa"> CC-BY-SA</label>
+                  <label><input type="checkbox" name="photo_license" value="cc-by-nc"> CC-BY-NC</label>
+                  <label><input type="checkbox" name="photo_license" value="cc-by-nd"> CC-BY-ND</label>
+                  <label><input type="checkbox" name="photo_license" value="cc-by-nc-sa"> CC-BY-NC-SA</label>
+                  <label><input type="checkbox" name="photo_license" value="cc-by-nc-nd"> CC-BY-NC-ND</label>
+                  <label><input type="checkbox" id="allRightsReserved" name="photo_licensed" value="false"> All rights reserved</label>
+                </div>
+              </div>
+          
+              <div>
+                <label>Sound Licenses:</label>
+                <div id="soundLicenses">
+                  <label><input type="checkbox" name="sound_license" value="cc0"> CC0</label>
+                  <label><input type="checkbox" name="sound_license" value="cc-by"> CC-BY</label>
+                  <label><input type="checkbox" name="sound_license" value="cc-by-sa"> CC-BY-SA</label>
+                  <label><input type="checkbox" name="sound_license" value="cc-by-nc"> CC-BY-NC</label>
+                  <label><input type="checkbox" name="sound_license" value="cc-by-nd"> CC-BY-ND</label>
+                  <label><input type="checkbox" name="sound_license" value="cc-by-nc-sa"> CC-BY-NC-SA</label>
+                  <label><input type="checkbox" name="sound_license" value="cc-by-nc-nd"> CC-BY-NC-ND</label>
+                </div>
+              </div>       
+              
+              <div>
+                <label>Observation Sources:</label>
+                <div id="observationSources">
+                  <label><input type="checkbox" value="any" checked> Any</label>
+                  <label><input type="checkbox" value="2"> iNaturalist Android app</label>
+                  <label><input type="checkbox" value="3"> iNaturalist iOS app</label>
+                  <label><input type="checkbox" value="333"> Seek app</label>
+                </div>
+              </div>
+
+            </fieldset>
+          </div>
+
+        <div class="collapsible-container">
+            <button id="toggleFilters" class="collapse-toggle">Toggles ▼</button>
+            <fieldset id="additionalFilters" class="collapsed">
+
+              <div class="toggle-group">
+                <label>Captive:</label>
+                <input type="radio" id="captive-any" name="captive" value="any" checked>
+                <label for="captive-any">Any</label>
+                <input type="radio" id="captive-yes" name="captive" value="true">
+                <label for="captive-yes">Yes</label>
+                <input type="radio" id="captive-no" name="captive" value="false">
+                <label for="captive-no">No</label>
+              </div>
+
+              <div class="toggle-group">
+                <label>Has Sounds:</label>
+                <input type="radio" id="sounds-any" name="sounds" value="any" checked>
+                <label for="sounds-any">Any</label>
+                <input type="radio" id="sounds-yes" name="sounds" value="true">
+                <label for="sounds-yes">Yes</label>
+                <input type="radio" id="sounds-no" name="sounds" value="false">
+                <label for="sounds-no">No</label>
+              </div>
+
+            <div class="toggle-group">
+              <label>Has Photos:</label>
+              <input type="radio" id="photos-any" name="photos" value="any" checked>
+              <label for="photos-any">Any</label>
+              <input type="radio" id="photos-yes" name="photos" value="true">
+              <label for="photos-yes">Yes</label>
+              <input type="radio" id="photos-no" name="photos" value="false">
+              <label for="photos-no">No</label>
+            </div>
+
+            <div class="toggle-group">
+              <label for="threatened">Threatened</label>
+              <input type="radio" id="threatened-any" name="threatened" value="any" checked>
+              <label for="threatened-any">Any</label>
+              <input type="radio" id="threatened-yes" name="threatened" value="true">
+              <label for="threatened-yes">Yes</label>
+              <input type="radio" id="threatened-no" name="threatened" value="false">
+              <label for="threatened-no">No</label>
+            </div>
+            
+            <div class="toggle-group">
+              <label for="introduced">Introduced</label>
+              <input type="radio" id="introduced-any" name="introduced" value="any" checked>
+              <label for="introduced-any">Any</label>
+              <input type="radio" id="introduced-yes" name="introduced" value="true">
+              <label for="introduced-yes">Yes</label>
+              <input type="radio" id="introduced-no" name="introduced" value="false">
+              <label for="introduced-no">No</label>
+            </div>
+
+            <div class="toggle-group">
+              <label for="native">Native</label>
+              <input type="radio" id="native-any" name="native" value="any" checked>
+              <label for="native-any">Any</label>
+              <input type="radio" id="native-yes" name="native" value="true">
+              <label for="native-yes">Yes</label>
+              <input type="radio" id="native-no" name="native" value="false">
+              <label for="native-no">No</label>
+            </div>
+
+            <div class="toggle-group">
+              <label>Popular:</label>
+              <input type="radio" id="popular-any" name="popular" value="any" checked>
+              <label for="popular-any">Any</label>
+              <input type="radio" id="popular-yes" name="popular" value="true">
+              <label for="popular-yes">Yes</label>
+              <input type="radio" id="popular-no" name="popular" value="false">
+              <label for="popular-no">No</label>
+            </div>
+            
+            <div class="toggle-group">
+              <label>Has IDs:</label>
+              <input type="radio" id="identified-any" name="identified" value="any" checked>
+              <label for="identified-any">Any</label>
+              <input type="radio" id="identified-yes" name="identified" value="true">
+              <label for="identified-yes">Yes</label>
+              <input type="radio" id="identified-no" name="identified" value="false">
+              <label for="identified-no">No</label>
+            </div>
+
+            <div class="toggle-group">
+              <label>Has Description:</label>
+              <input type="radio" id="description-any" name="description" value="any" checked>
+              <label for="description-any">Any</label>
+              <input type="radio" id="description-yes" name="description" value="true">
+              <label for="description-yes">Yes</label>
+              <input type="radio" id="description-no" name="description" value="false">
+              <label for="description-no">No</label>
+            </div>
+
+            <div class="toggle-group">
+              <label>Has Tags:</label>
+              <input type="radio" id="tags-any" name="tags" value="any" checked>
+              <label for="tags-any">Any</label>
+              <input type="radio" id="tags-yes" name="tags" value="true">
+              <label for="tags-yes">Yes</label>
+              <input type="radio" id="tags-no" name="tags" value="false">
+              <label for="tags-no">No</label>
+            </div>
+
+            <div class="toggle-group">
+              <label for="geo" data-tooltip="Filter observations based on whether they have a public lat/long">Georeferenced</label>
+              <input type="radio" id="geo-any" name="geo" value="any" checked>
+              <label for="geo-any">Any</label>
+              <input type="radio" id="geo-yes" name="geo" value="true">
+              <label for="geo-yes">Yes</label>
+              <input type="radio" id="geo-no" name="geo" value="false">
+              <label for="geo-no">No</label>
+            </div>
+
+            <div class="toggle-group">
+              <label for="mappable" data-tooltip="Filter observations based on whether they have a public lat/long AND location accuracy under ~25 km">Mappable</label>
+              <input type="radio" id="mappable-any" name="mappable" value="any" checked>
+              <label for="mappable-any">Any</label>
+              <input type="radio" id="mappable-yes" name="mappable" value="true">
+              <label for="mappable-yes">Yes</label>
+              <input type="radio" id="mappable-no" name="mappable" value="false">
+              <label for="mappable-no">No</label>
+            </div>
+
+          </fieldset>
+        </div>
+
+        <div class="collapsible-container">
+          <button class="collapse-toggle" id="toggleGeographic">Geographic Selectors ▼</button>
+          <fieldset id="geographicFieldset" class="collapsed">
+            <div id="mapContainer"></div>
+            <div class="toggle-group">
+              <label>Search Type:</label>
+              <input type="radio" name="geoSearchType" id="boundingBox" value="boundingBox">
+              <label for="boundingBox">Bounding Box</label>
+              <input type="radio" name="geoSearchType" id="circle" value="circle">
+              <label for="circle">Circle</label>
+            </div>
+            <div id="geoInputs">
+              <div id="boundingBoxInputs" style="display: none;">
+                <div class="input-group">
+                    <label for="nelat">NE Latitude:</label>
+                    <input type="text" id="nelat" placeholder="NE Latitude">
+                </div>
+                <div class="input-group">
+                    <label for="nelng">NE Longitude:</label>
+                    <input type="text" id="nelng" placeholder="NE Longitude">
+                </div>
+                <div class="input-group">
+                    <label for="swlat">SW Latitude:</label>
+                    <input type="text" id="swlat" placeholder="SW Latitude">
+                </div>
+                <div class="input-group">
+                    <label for="swlng">SW Longitude:</label>
+                    <input type="text" id="swlng" placeholder="SW Longitude">
+                </div>
+            </div>
+            <div id="circleInputs" style="display: none;">
+              <div class="input-group">
+                  <label for="lat">Center Latitude:</label>
+                  <input type="text" id="lat" placeholder="Center Latitude">
+              </div>
+              <div class="input-group">
+                  <label for="lng">Center Longitude:</label>
+                  <input type="text" id="lng" placeholder="Center Longitude">
+              </div>
+              <div class="input-group">
+                  <label for="radius">Radius (km):</label>
+                  <input type="text" id="radius" placeholder="Radius (km)">
+              </div>
+          </div>
+          </div>
+            <div class="toggle-group">
+              <label for="acc" data-tooltip="Filter observations based on whether they have location accuracy data">Location Accuracy</label>
+              <input type="radio" name="accType" id="accAny" value="any" checked>
+              <label for="acc_above" data-tooltip="Show observations with location accuracy above this value in meters">Accuracy Above</label>
+              <input type="radio" name="accType" id="accTrue" value="true">
+              <label for="acc_below" data-tooltip="Show observations with location accuracy below this value in meters">Accuracy Below</label>
+              <input type="radio" name="accType" id="accFalse" value="false">
+              <label for="accFalse">False</label>
+            </div>
+            <div id="accInputs" style="display: none;">
+              <input type="number" id="accAbove" placeholder="Accuracy Above (m)">
+              <input type="number" id="accBelow" placeholder="Accuracy Below (m)">
+            </div>
+            <div class="toggle-group">
+              <label for="geoprivacy" data-tooltip="Filter by observer-set location privacy">Geoprivacy</label>
+              <input type="radio" name="geoprivacy" id="geoOpen" value="open">
+              <label for="geoOpen">Open</label>
+              <input type="radio" name="geoprivacy" id="geoObscured" value="obscured">
+              <label for="geoObscured">Obscured</label>
+              <input type="radio" name="geoprivacy" id="geoPrivate" value="private">
+              <label for="geoPrivate">Private</label>
+              <input type="radio" name="geoprivacy" id="geoObscuredPrivate" value="obscured_private">
+              <label for="geoObscuredPrivate">Obscured or Private</label>
+            </div>
+            <div class="toggle-group">
+              <label for="taxon_geoprivacy" data-tooltip="Filter by automatically applied location privacy for sensitive species">Taxon Geoprivacy</label>
+              <input type="radio" name="taxonGeoprivacy" id="taxonGeoOpen" value="open">
+              <label for="taxonGeoOpen">Open</label>
+              <input type="radio" name="taxonGeoprivacy" id="taxonGeoObscured" value="obscured">
+              <label for="taxonGeoObscured">Obscured</label>
+              <input type="radio" name="taxonGeoprivacy" id="taxonGeoPrivate" value="private">
+              <label for="taxonGeoPrivate">Private</label>
+              <input type="radio" name="taxonGeoprivacy" id="taxonGeoObscuredPrivate" value="obscured_private">
+              <label for="taxonGeoObscuredPrivate">Obscured or Private</label>
+            </div>
+          </fieldset>
+        </div>
+
+        <div class="date-selectors-container">
+            <fieldset class="date-selector">
+                <legend>Date Observed</legend>
+                <div>
+                    <input type="radio" id="observedDateAny" name="observedDateType" value="any" checked>
+                    <label for="observedDateAny">Any</label>
+                </div>
+                <div>
+                    <input type="radio" id="observedDateExact" name="observedDateType" value="exact">
+                    <label for="observedDateExact">Exact Date</label>
+                    <div id="observedExactDateContainer" class="date-input-container">
+                        <input type="date" id="observedExactDate">
+                    </div>
+                </div>
+                <div>
+                    <input type="radio" id="observedDateRange" name="observedDateType" value="range">
+                    <label for="observedDateRange">Range</label>
+                    <div id="observedRangeDateContainer" class="date-input-container">
+                        <input type="date" id="observedRangeStart">
+                        <input type="date" id="observedRangeEnd">
+                    </div>
+                </div>
+                <div>
+                    <input type="radio" id="observedDateMonths" name="observedDateType" value="months">
+                    <label for="observedDateMonths">Months</label>
+                    <div id="observedMonthsContainer" class="date-input-container">
+                        <div>
+                            <button id="selectAllObservedMonths">Select All</button>
+                            <button id="deselectAllObservedMonths">Deselect All</button>
+                        </div>
+                        <div id="observedMonthCheckboxes"></div>
+                    </div>
+                </div>
+                <div>
+                    <input type="radio" id="observedDateYears" name="observedDateType" value="years">
+                    <label for="observedDateYears">Years</label>
+                    <div id="observedYearsContainer" class="date-input-container">
+                        <select id="observedYearSelect" multiple>
+                        </select>
+                    </div>
+                </div>
+            </fieldset>
+        
+            <fieldset class="date-selector">
+                <legend>Date Added</legend>
+                <div>
+                    <input type="radio" id="addedDateAny" name="addedDateType" value="any" checked>
+                    <label for="addedDateAny">Any</label>
+                </div>
+                <div>
+                    <input type="radio" id="addedDateExact" name="addedDateType" value="exact">
+                    <label for="addedDateExact">Exact Date</label>
+                    <div id="addedExactDateContainer" class="date-input-container">
+                        <input type="date" id="addedExactDate">
+                    </div>
+                </div>
+                <div>
+                    <input type="radio" id="addedDateRange" name="addedDateType" value="range">
+                    <label for="addedDateRange">Range</label>
+                    <div id="addedRangeDateContainer" class="date-input-container">
+                        <input type="date" id="addedRangeStart">
+                        <input type="date" id="addedRangeEnd">
+                    </div>
+                </div>
+                <div>
+                    <input type="radio" id="addedDateMonths" name="addedDateType" value="months">
+                    <label for="addedDateMonths">Months</label>
+                    <div id="addedMonthsContainer" class="date-input-container">
+                        <div>
+                            <button id="selectAllAddedMonths">Select All</button>
+                            <button id="deselectAllAddedMonths">Deselect All</button>
+                        </div>
+                        <div id="addedMonthCheckboxes"></div>
+                    </div>
+                </div>
+                <div>
+                    <input type="radio" id="addedDateYears" name="addedDateType" value="years">
+                    <label for="addedDateYears">Years</label>
+                    <div id="addedYearsContainer" class="date-input-container">
+                        <select id="addedYearSelect" multiple>
+                        </select>
+                    </div>
+                </div>
+            </fieldset>
+        </div>    
+
+        <div id="addButtonsContainer">
+          <button id="addTaxonButton" data-tooltip="Filter by community ID taxon. Supports any number of taxa.">Add Taxon</button>
+          <button id="addIdTaxonButton" data-tooltip="Filter by active ID taxon (including descendants). Supports any number of taxa.">Add ID Taxon</button>
+          <button id="addUserButton" data-tooltip="Filter for obsevations uploaded by specific users. Supports any number of users.">Add User</button>
+          <button id="addIdentifierButton" data-tooltip="Filter for observations identified by specific users. Supports any number of users.">Add Identifier</button>
+          <button id="addProjectButton" data-tooltip="Filter for observations in specific projects. Only supports one project at a time unless qualifiers are selected.">Add Project</button>
+          <button id="addPlaceButton" data-tooltip="Filter by place. Supports any number of places.">Add Place</button>
+          <button id="addObservationFieldButton" data-tooltip="Filter for observations with values for specific observation fields">Add Observation Field</button>
+          <button id="addAnnotationButton" data-tooltip="Filter for observations with specific annotations">Add Annotation</button>
+      </div>
+      <label data-tooltip="If multiple ID Taxon criteria are added, match only observations with at least one identification for each specified taxon (includes descendants)"><input type="checkbox" id="idTaxonExclusive"> ID Taxa Exclusive</label>
+      <div id="actionsContainer">
+      </div>
+            
+        <button id="generateUrlButton">Generate iNaturalist URL</button>
+    </fieldset>
+
+  <div id="urlOutputs">
+      <div id="plainUrlOutput">
+        <textarea id="plainUrlText" rows="3" spellcheck="false"></textarea>
+        <button id="copyUrlButton" title="Copy to clipboard">📋</button>
+      </div>
+      <div id="buttonOutputs">
+          <a id="identifyButton" target="_blank" class="url-button">Identify</a>
+          <a id="exploreButton" target="_blank" class="url-button">Explore</a>
+      </div>
+  </div>
+
+    <script src="shared_api.js"></script>
+    <script src="URLgen.js"></script>
+    <link rel="stylesheet" href="leaflet.css" />
+    <script src="leaflet.js"></script>
+</body>
+</html>
