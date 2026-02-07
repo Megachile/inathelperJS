@@ -66,6 +66,14 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
+    // Event Listener for phenology predictor button
+    const openPhenoPredictorButton = document.getElementById('openPhenoPredictorButton');
+    if (openPhenoPredictorButton) {
+        openPhenoPredictorButton.addEventListener('click', () => {
+            browserAPI.runtime.sendMessage({ action: "openPhenoPredictorPage" });
+        });
+    }
+
     // Event Listeners for import/export
     document.getElementById('exportButton').addEventListener('click', exportConfigurations);
     const importInput = document.getElementById('importInput');
