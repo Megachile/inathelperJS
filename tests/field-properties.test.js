@@ -73,7 +73,7 @@ describe('Field Properties Consistency Tests', () => {
 
     describe('Field Property Validation', () => {
         test('options.js validates all three required field properties', () => {
-            expect(optionsJs).toMatch(/!action\.fieldId\s*\|\|\s*!action\.fieldName\s*\|\|\s*!action\.fieldValue/);
+            expect(optionsJs).toMatch(/!action\.fieldId\s*\|\|\s*!action\.fieldName\s*\|\|\s*\(!action\.fieldValue\s*&&\s*!action\.promptForValue\)/);
         });
 
         test('Validation includes observationField type check', () => {

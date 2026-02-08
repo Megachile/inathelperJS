@@ -81,7 +81,7 @@ describe('Action Type Consistency Tests', () => {
 
     describe('Action Validation', () => {
         test('options.js validates observationField fields are not empty', () => {
-            const validationRegex = /!action\.fieldId\s*\|\|\s*!action\.fieldName\s*\|\|\s*!action\.fieldValue/;
+            const validationRegex = /!action\.fieldId\s*\|\|\s*!action\.fieldName\s*\|\|\s*\(!action\.fieldValue\s*&&\s*!action\.promptForValue\)/;
             expect(optionsJs).toMatch(validationRegex);
         });
 

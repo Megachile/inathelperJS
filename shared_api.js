@@ -963,6 +963,32 @@ async function performSingleUndoAction(observationId, undoAction) {
                     console.error('Error in undo addToList action:', error);
                     return { success: false, error: safeErrorString(error) };
             }
+            case 'removeTag':
+                try {
+                    // Restore the previous tag list (without the added tag)
+                    const jwt = await getJWT();
+                    if (!jwt) return { success: false, error: 'No JWT found' };
+                    const previousTagList = (undoAction.previousTags || []).join(',');
+                    const response = await fetch(`https://api.inaturalist.org/v1/observations/${observationId}`, {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${jwt}`
+                        },
+                        body: JSON.stringify({
+                            ignore_photos: 1,
+                            observation: { tag_list: previousTagList }
+                        })
+                    });
+                    if (response.ok) {
+                        return { success: true, action: 'removeTag', message: `Tag "${undoAction.tagText}" removed` };
+                    } else {
+                        return { success: false, error: 'Failed to remove tag' };
+                    }
+                } catch (error) {
+                    console.error('Error in undo removeTag action:', error);
+                    return { success: false, error: safeErrorString(error) };
+                }
             default:
                 console.warn(`Unknown undo action type: ${undoAction.type}`);
                 return Promise.resolve({ success: false, error: 'Unknown undo action type' }
@@ -2011,6 +2037,8 @@ function createDetailedActionResultsModal(summaryByActionType, actionSetName, sk
             actionDisplayName = `Copy Field: "${actionConfig.sourceFieldName}" to "${actionConfig.targetFieldName}"`;
         } else if (actionConfig.type === 'addToList') {
              actionDisplayName = `${actionConfig.remove ? 'Remove from' : 'Add to'} List ID: "${actionConfig.listId}"`;
+        } else if (actionConfig.type === 'addTag') {
+            actionDisplayName = `Add Tag: "${actionConfig.tagText}"`;
         }
 
         contentHTML += `<div style="margin-bottom: 20px; padding: 10px; border: 1px solid #eee; border-radius: 4px;">`;

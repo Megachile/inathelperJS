@@ -507,6 +507,9 @@ function extractActionsFromForm() {
                 const fieldValueElement = actionDiv.querySelector('.fieldValue');
                 action.fieldValue = fieldValueElement.dataset.taxonId || fieldValueElement.value.trim();
                 action.displayValue = fieldValueElement.value.trim();
+                action.promptForValue = actionDiv.querySelector('.promptForValue')?.checked || false;
+                action.fieldDatatype = actionDiv.querySelector('.fieldDatatype')?.value || '';
+                action.fieldAllowedValues = actionDiv.querySelector('.fieldAllowedValues')?.value || '';
                 break;
             case 'annotation':
                 action.annotationField = actionDiv.querySelector('.annotationField').value;
@@ -540,6 +543,9 @@ function extractActionsFromForm() {
             case 'addToList':
                 action.listId = actionDiv.querySelector('.listSelect').value;
                 action.remove = actionDiv.querySelector('.removeFromList').checked;
+                break;
+            case 'addTag':
+                action.tagText = actionDiv.querySelector('.tagText').value.trim();
                 break;
         }
         return action;
@@ -625,7 +631,7 @@ function validateCommonConfiguration(config) {
             case 'withdrawId' :
                 break;
             case 'observationField':
-                if (!action.fieldId || !action.fieldName || !action.fieldValue) {
+                if (!action.fieldId || !action.fieldName || (!action.fieldValue && !action.promptForValue)) {
                     throw new Error("Please enter Field Name, ID, and Value for all Observation Field actions.");
                 }
                 break;
@@ -657,6 +663,11 @@ function validateCommonConfiguration(config) {
             case 'copyObservationField':
                 if (!action.sourceFieldId || !action.sourceFieldName || !action.targetFieldId || !action.targetFieldName) {
                     throw new Error("Please enter Source Field Name, ID, Target Field Name, and ID for all Copy Observation Field actions.");
+                }
+                break;
+            case 'addTag':
+                if (!action.tagText) {
+                    throw new Error("Please enter tag text for all Add Tag actions.");
                 }
                 break;
         }
@@ -764,16 +775,9 @@ async function saveConfiguration() {
 
     } catch (error) {
         // Errors from validation or setStorageWithQuotaCheck will be caught here.
-        // setStorageWithQuotaCheck already shows an alert for quota issues.
-        // Validation errors are also alerted.
-        if (!error.message.startsWith("Storage quota check failed") && 
-            !error.message.startsWith("Please enter") && 
-            !error.message.includes("already in use") &&
-            !error.message.includes("not allowed") &&
-            !error.message.includes("must be selected") &&
-            !error.message.includes("Please add at least one action")) {
-            // Alert for other unexpected errors
-            alert(`An unexpected error occurred: ${error.message}`);
+        // setStorageWithQuotaCheck already shows its own alert for quota issues.
+        if (!error.message.startsWith("Storage quota check failed")) {
+            alert(error.message);
         }
         console.error("Error saving configuration:", error);
         // No need to call updateStorageUsageDisplay here as setStorageWithQuotaCheck handles it.
@@ -847,6 +851,10 @@ function populateActionInputs(actionDiv, action) {
             actionDiv.querySelector('.fieldName').value = action.fieldName || '';
             actionDiv.querySelector('.fieldId').value = action.fieldId || '';
             actionDiv.querySelector('.fieldValue').value = action.fieldValue || '';
+            const promptCheckbox = actionDiv.querySelector('.promptForValue');
+            if (promptCheckbox) promptCheckbox.checked = action.promptForValue || false;
+            if (actionDiv.querySelector('.fieldDatatype')) actionDiv.querySelector('.fieldDatatype').value = action.fieldDatatype || '';
+            if (actionDiv.querySelector('.fieldAllowedValues')) actionDiv.querySelector('.fieldAllowedValues').value = action.fieldAllowedValues || '';
             break;
         case 'annotation':
             actionDiv.querySelector('.annotationField').value = action.annotationField || '';
@@ -894,6 +902,9 @@ function populateActionInputs(actionDiv, action) {
                 }, 100);
             }
             break;
+        case 'addTag':
+            actionDiv.querySelector('.tagText').value = action.tagText || '';
+            break;
     }
 }
 
@@ -932,6 +943,7 @@ function addActionToForm(action = null) {
             <option value="follow">Follow/Unfollow Observation</option>
             <option value="reviewed">Mark Observation as Reviewed/Unreviewed</option>                                    
             <option value="addToList">Add/Remove Observation To/From List</option>
+            <option value="addTag">Add Tag</option>
         </select>
        <div class="follow-options" style="display: none;">
             <div class="inline-radio">
@@ -952,8 +964,18 @@ function addActionToForm(action = null) {
         <div class="ofInputs">
             <input type="text" class="fieldName" placeholder="Observation Field Name">
             <input type="number" class="fieldId" placeholder="Field ID" readonly>
+            <input type="hidden" class="fieldDatatype">
+            <input type="hidden" class="fieldAllowedValues">
             <div class="fieldValueContainer">
                 <input type="text" class="fieldValue" placeholder="Field Value">
+            </div>
+            <div class="checkboxContainer" style="display: flex; align-items: center; margin-top: 10px;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <input type="checkbox" class="promptForValue" id="promptForValue-${Date.now()}" style="margin: 0;">
+                    <label for="promptForValue-${Date.now()}" style="margin: 0; font-size: 14px; cursor: pointer; line-height: 1.4;">
+                        Prompt for value at runtime (use Field Value above as default)
+                    </label>
+                </div>
             </div>
             <p class="fieldDescription"></p>
         </div>
@@ -1006,6 +1028,10 @@ function addActionToForm(action = null) {
                 </label>
             </div>
         </div>
+        <div class="tagInputs" style="display:none;">
+            <input type="text" class="tagText" placeholder="Tag text (e.g. 'gall', 'needs review')">
+            <p style="font-size: 12px; color: #666; margin-top: 5px;">Note: Tags can only be added to your own observations.</p>
+        </div>
         <button class="removeActionButton">Remove Action</button>
 
     `;
@@ -1022,6 +1048,7 @@ function addActionToForm(action = null) {
     const qualityMetricInputs = actionDiv.querySelector('.qualityMetricInputs');
     const copyObservationFieldInputs = actionDiv.querySelector('.copyObservationFieldInputs');
     const addToListInputs = actionDiv.querySelector('.addToListInputs');
+    const tagInputs = actionDiv.querySelector('.tagInputs');
     const listSelect = actionDiv.querySelector('.listSelect');
     if (taxonIdInputs) {
         taxonIdInputs.innerHTML += `
@@ -1045,8 +1072,9 @@ function addActionToForm(action = null) {
         qualityMetricInputs.style.display = actionType.value === 'qualityMetric' ? 'block' : 'none';
         copyObservationFieldInputs.style.display = actionType.value === 'copyObservationField' ? 'block' : 'none';
         addToListInputs.style.display = actionType.value === 'addToList' ? 'block' : 'none';
-        followOptions.style.display = actionType.value === 'follow' ? 'block' : 'none'; // Add this line
-        reviewedOptions.style.display = actionType.value === 'reviewed' ? 'block' : 'none'; // Add this line
+        tagInputs.style.display = actionType.value === 'addTag' ? 'block' : 'none';
+        followOptions.style.display = actionType.value === 'follow' ? 'block' : 'none';
+        reviewedOptions.style.display = actionType.value === 'reviewed' ? 'block' : 'none';
     
         if (actionType.value === 'addToList') {
             console.log('Add to List selected, refreshing list select');
@@ -1088,6 +1116,10 @@ function addActionToForm(action = null) {
     
     setupAutocompleteDropdown(fieldNameInput, lookupObservationField, (result) => {
         fieldIdInput.value = result.id;
+        const datatypeInput = actionDiv.querySelector('.fieldDatatype');
+        const allowedValuesInput = actionDiv.querySelector('.fieldAllowedValues');
+        if (datatypeInput) datatypeInput.value = result.datatype || '';
+        if (allowedValuesInput) allowedValuesInput.value = result.allowed_values || '';
         const updatedFieldValueInput = updateFieldValueInput(result, fieldValueContainer);
         if (result.datatype === 'taxon') {
             setupTaxonAutocompleteForInput(updatedFieldValueInput);
@@ -1413,11 +1445,13 @@ async function formatAction(action) {
             return 'Withdraw active identification';
         case 'addToList':
             const listName = await getListName(action.listId);
-            return action.remove ? 
-                `Remove from list: ${listName}` : 
+            return action.remove ?
+                `Remove from list: ${listName}` :
                 `Add to list: ${listName}`;
+        case 'addTag':
+            return `Add tag: "${action.tagText}"`;
         default:
-            return 'Unknown action';       
+            return 'Unknown action';
     }
 }
 

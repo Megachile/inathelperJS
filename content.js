@@ -745,15 +745,121 @@ async function addAnnotation(observationId, attributeId, valueId) {
             body: JSON.stringify(data)
         });
         const responseData = await response.json();
-        if (responseData.errors) {
-            console.log('Annotation not added:', responseData.errors);
-            return { success: false, message: 'Annotation not added', data: responseData };
+        if (!response.ok || responseData.errors) {
+            console.log(`Annotation POST failed (HTTP ${response.status}), attempting to vote on existing:`, responseData.errors || responseData);
+            const voteResult = await voteOnExistingAnnotation(observationId, attributeId, valueId, jwt);
+            return voteResult;
         } else {
             console.log('Annotation added successfully:', responseData);
             return { success: true, data: responseData, uuid: responseData.uuid };
         }
     } catch (error) {
         console.error('Error adding annotation:', error);
+        return { success: false, error: safeErrorString(error) };
+    }
+}
+
+async function voteOnExistingAnnotation(observationId, attributeId, valueId, jwt) {
+    try {
+        // Fetch the observation to find the existing annotation UUID
+        const obsResponse = await fetch(`https://api.inaturalist.org/v1/observations/${observationId}`, {
+            headers: { 'Authorization': `Bearer ${jwt}` }
+        });
+        const obsData = await obsResponse.json();
+        const observation = obsData.results ? obsData.results[0] : null;
+
+        if (!observation || !observation.annotations) {
+            return { success: false, error: 'Could not fetch observation annotations' };
+        }
+
+        // Find the annotation matching our attribute and value
+        const existingAnnotation = observation.annotations.find(ann =>
+            ann.controlled_attribute_id === parseInt(attributeId) &&
+            ann.controlled_value_id === parseInt(valueId)
+        );
+
+        if (!existingAnnotation) {
+            // Annotation exists for this attribute but with a different value
+            // Find any annotation for this attribute so we can delete it and re-add
+            const conflictingAnnotation = observation.annotations.find(ann =>
+                ann.controlled_attribute_id === parseInt(attributeId)
+            );
+            if (conflictingAnnotation) {
+                console.log(`Found conflicting annotation (value ${conflictingAnnotation.controlled_value_id} vs desired ${valueId}), attempting to replace`);
+                // Try to delete the conflicting annotation (only works if it's ours)
+                const deleteResponse = await fetch(`https://api.inaturalist.org/v1/annotations/${conflictingAnnotation.uuid}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${jwt}` }
+                });
+                if (deleteResponse.ok) {
+                    // DELETE succeeded - try to re-add with new value
+                    const retryResponse = await fetch('https://api.inaturalist.org/v1/annotations', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${jwt}`
+                        },
+                        body: JSON.stringify({
+                            annotation: {
+                                resource_type: "Observation",
+                                resource_id: observationId,
+                                controlled_attribute_id: attributeId,
+                                controlled_value_id: valueId
+                            }
+                        })
+                    });
+                    const retryData = await retryResponse.json();
+                    if (!retryResponse.ok || retryData.errors) {
+                        // Re-add failed — DELETE may have only removed our vote, annotation still exists
+                        // Fall through to disagree vote below
+                        console.log(`Re-add failed after DELETE (annotation likely belongs to another user), voting to disagree`);
+                    } else {
+                        return { success: true, data: retryData, uuid: retryData.uuid, action: 'replaced' };
+                    }
+                }
+                {
+                    // Can't replace annotation, vote to disagree instead
+                    console.log(`Voting to disagree on conflicting annotation`);
+                    const voteUrl = `https://api.inaturalist.org/v1/votes/vote/annotation/${conflictingAnnotation.uuid}`;
+                    const voteResponse = await fetch(voteUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${jwt}`
+                        },
+                        body: JSON.stringify({ vote: false })
+                    });
+                    if (voteResponse.ok) {
+                        return { success: true, uuid: conflictingAnnotation.uuid, action: 'disagreed' };
+                    } else {
+                        return { success: false, error: 'Failed to vote disagree on conflicting annotation' };
+                    }
+                }
+            }
+            return { success: false, error: 'No matching annotation found to vote on' };
+        }
+
+        // Vote in agreement with the existing annotation
+        const voteUrl = `https://api.inaturalist.org/v1/votes/vote/annotation/${existingAnnotation.uuid}`;
+        const voteResponse = await fetch(voteUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${jwt}`
+            },
+            body: JSON.stringify({ vote: true })
+        });
+
+        if (voteResponse.ok) {
+            console.log(`Voted in agreement on existing annotation (UUID: ${existingAnnotation.uuid})`);
+            return { success: true, uuid: existingAnnotation.uuid, action: 'voted' };
+        } else {
+            const errorData = await voteResponse.json().catch(() => ({}));
+            console.log('Vote failed:', errorData);
+            return { success: false, error: 'Vote on annotation failed', data: errorData };
+        }
+    } catch (error) {
+        console.error('Error voting on existing annotation:', error);
         return { success: false, error: safeErrorString(error) };
     }
 }
@@ -841,6 +947,73 @@ async function addComment(observationId, commentBody) {
         }
     } catch (error) {
         console.error('Error adding comment:', error);
+        return { success: false, error: safeErrorString(error) };
+    }
+}
+
+async function addTag(observationId, tagText) {
+    if (!observationId) {
+        return { success: false, error: 'No observation ID provided' };
+    }
+    if (!tagText || !tagText.trim()) {
+        return { success: false, error: 'No tag text provided' };
+    }
+
+    const jwt = await getJWT();
+    if (!jwt) {
+        return { success: false, error: 'No JWT found' };
+    }
+
+    try {
+        // First fetch existing tags so we don't overwrite them
+        const obsResponse = await fetch(`https://api.inaturalist.org/v1/observations/${observationId}`, {
+            headers: { 'Authorization': `Bearer ${jwt}` }
+        });
+        const obsData = await obsResponse.json();
+        const observation = obsData.results ? obsData.results[0] : null;
+        if (!observation) {
+            return { success: false, error: 'Could not fetch observation' };
+        }
+
+        const existingTags = observation.tags ? observation.tags.map(t => typeof t === 'string' ? t : t.name || t) : [];
+
+        // Check if tag already exists
+        if (existingTags.some(t => t.toLowerCase() === tagText.trim().toLowerCase())) {
+            console.log(`Tag "${tagText}" already exists on observation ${observationId}`);
+            return { success: true, noActionNeeded: true, message: 'Tag already exists' };
+        }
+
+        const newTagList = [...existingTags, tagText.trim()].join(',');
+
+        // Update observation with new tag list
+        const updateUrl = `https://api.inaturalist.org/v1/observations/${observationId}`;
+        const response = await fetch(updateUrl, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${jwt}`
+            },
+            body: JSON.stringify({
+                ignore_photos: 1,
+                observation: { tag_list: newTagList }
+            })
+        });
+
+        if (response.ok) {
+            console.log(`Tag "${tagText}" added to observation ${observationId}`);
+            return { success: true, previousTags: existingTags };
+        } else {
+            const errorData = await response.json().catch(() => ({}));
+            console.error('Error adding tag:', response.status, errorData);
+            if (response.status === 403 || response.status === 401 || response.status === 410) {
+                return { success: false, error: 'You can only add tags to your own observations' };
+            }
+            const rawError = errorData.error?.error || errorData.error || errorData.errors?.[0];
+            const errorMsg = (typeof rawError === 'string' ? rawError : null) || `Failed to add tag (HTTP ${response.status})`;
+            return { success: false, error: errorMsg };
+        }
+    } catch (error) {
+        console.error('Error adding tag:', error);
         return { success: false, error: safeErrorString(error) };
     }
 }
@@ -1481,6 +1654,230 @@ async function performActions(actions) {
     return results;
 }
 
+function showFieldPromptModal(fieldName, fieldDatatype, fieldAllowedValues, defaultValue) {
+    return new Promise((resolve) => {
+        // Use <dialog> with showModal() for browser-native focus trapping and top-layer rendering
+        const dialog = document.createElement('dialog');
+        dialog.style.cssText = `
+            border: none; padding: 0; background: transparent;
+            width: 100vw; height: 100vh; max-width: 100vw; max-height: 100vh;
+            display: flex; justify-content: center; align-items: center;
+        `;
+
+        const modalContent = document.createElement('div');
+        modalContent.style.cssText = `
+            background-color: white; padding: 20px; border-radius: 8px;
+            min-width: 400px; max-width: 600px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            font-family: sans-serif; font-size: 14px; color: #333;
+        `;
+
+        const title = document.createElement('h3');
+        title.textContent = `Enter value for "${fieldName}"`;
+        title.style.cssText = 'margin: 0 0 15px 0; font-size: 16px;';
+        modalContent.appendChild(title);
+
+        const inputContainer = document.createElement('div');
+        inputContainer.style.cssText = 'margin-bottom: 15px; position: relative;';
+
+        let inputElement;
+        let suggestionsVisible = false;
+
+        const inputStyle = `
+            width: 100%; padding: 8px; border: 1px solid #ccc;
+            border-radius: 4px; font-size: 14px; box-sizing: border-box;
+            font-family: sans-serif; color: #333; background: white;
+        `;
+
+        if (fieldDatatype === 'taxon') {
+            inputElement = document.createElement('input');
+            inputElement.type = 'text';
+            inputElement.value = defaultValue || '';
+            inputElement.placeholder = 'Search for a taxon...';
+            inputElement.style.cssText = inputStyle;
+            inputElement.dataset.taxonId = '';
+
+            const suggestionContainer = document.createElement('div');
+            suggestionContainer.style.cssText = `
+                position: absolute; top: 100%; left: 0; right: 0;
+                background: white; border: 1px solid #ccc; border-radius: 4px;
+                max-height: 300px; overflow-y: auto; display: none;
+                margin-top: 2px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            `;
+            inputContainer.appendChild(suggestionContainer);
+
+            let debounceTimeout;
+            inputElement.addEventListener('input', () => {
+                inputElement.dataset.taxonId = '';
+                clearTimeout(debounceTimeout);
+                const query = inputElement.value.trim();
+                if (query.length < 2) {
+                    suggestionContainer.style.display = 'none';
+                    suggestionContainer.innerHTML = '';
+                    suggestionsVisible = false;
+                    return;
+                }
+                debounceTimeout = setTimeout(async () => {
+                    try {
+                        const taxa = await lookupTaxon(query, 10);
+                        suggestionContainer.innerHTML = '';
+                        if (taxa.length === 0) {
+                            suggestionContainer.style.display = 'none';
+                            suggestionsVisible = false;
+                            return;
+                        }
+                        taxa.forEach(taxon => {
+                            const item = document.createElement('div');
+                            item.style.cssText = `
+                                display: flex; align-items: center; padding: 8px;
+                                cursor: pointer; border-bottom: 1px solid #eee;
+                            `;
+                            item.addEventListener('mouseenter', () => item.style.backgroundColor = '#f0f0f0');
+                            item.addEventListener('mouseleave', () => item.style.backgroundColor = 'white');
+
+                            if (taxon.default_photo?.square_url) {
+                                const img = document.createElement('img');
+                                img.src = taxon.default_photo.square_url;
+                                img.style.cssText = 'width: 48px; height: 48px; object-fit: cover; margin-right: 10px; border-radius: 4px;';
+                                img.onerror = () => img.style.display = 'none';
+                                item.appendChild(img);
+                            }
+
+                            const nameDiv = document.createElement('div');
+                            nameDiv.style.cssText = 'flex: 1;';
+                            if (taxon.preferred_common_name) {
+                                nameDiv.innerHTML = `<div style="font-weight:bold;">${taxon.preferred_common_name}</div><div style="color:#666;font-style:italic;">${taxon.name}</div>`;
+                            } else {
+                                nameDiv.innerHTML = `<div style="font-style:italic;">${taxon.name}</div>`;
+                            }
+                            item.appendChild(nameDiv);
+
+                            item.addEventListener('click', () => {
+                                const displayName = taxon.preferred_common_name
+                                    ? `${taxon.preferred_common_name} (${taxon.name})`
+                                    : taxon.name;
+                                inputElement.value = displayName;
+                                inputElement.dataset.taxonId = taxon.id;
+                                suggestionContainer.style.display = 'none';
+                                suggestionContainer.innerHTML = '';
+                                suggestionsVisible = false;
+                            });
+                            suggestionContainer.appendChild(item);
+                        });
+                        suggestionContainer.style.display = 'block';
+                        suggestionsVisible = true;
+                    } catch (error) {
+                        console.error('Error fetching taxa for prompt modal:', error);
+                        suggestionContainer.style.display = 'none';
+                        suggestionsVisible = false;
+                    }
+                }, 300);
+            });
+        } else if (fieldAllowedValues && fieldAllowedValues.trim()) {
+            inputElement = document.createElement('select');
+            inputElement.style.cssText = inputStyle;
+            const emptyOpt = document.createElement('option');
+            emptyOpt.value = '';
+            emptyOpt.textContent = '-- Select --';
+            inputElement.appendChild(emptyOpt);
+            fieldAllowedValues.split('|').map(v => v.trim()).filter(v => v).forEach(val => {
+                const opt = document.createElement('option');
+                opt.value = val;
+                opt.textContent = val;
+                if (val === defaultValue) opt.selected = true;
+                inputElement.appendChild(opt);
+            });
+        } else {
+            inputElement = document.createElement('input');
+            inputElement.value = defaultValue || '';
+            inputElement.style.cssText = inputStyle;
+            switch (fieldDatatype) {
+                case 'numeric': inputElement.type = 'number'; break;
+                case 'date': inputElement.type = 'date'; break;
+                case 'datetime': inputElement.type = 'datetime-local'; break;
+                case 'time': inputElement.type = 'time'; break;
+                default: inputElement.type = 'text'; break;
+            }
+        }
+
+        inputContainer.insertBefore(inputElement, inputContainer.firstChild);
+        modalContent.appendChild(inputContainer);
+
+        const buttonContainer = document.createElement('div');
+        buttonContainer.style.cssText = 'display: flex; justify-content: flex-end; gap: 10px;';
+
+        const cancelBtn = document.createElement('button');
+        cancelBtn.textContent = 'Cancel';
+        cancelBtn.style.cssText = 'padding: 8px 16px; border: 1px solid #ccc; border-radius: 4px; background: #f5f5f5; cursor: pointer; font-size: 14px;';
+
+        const okBtn = document.createElement('button');
+        okBtn.textContent = 'OK';
+        okBtn.style.cssText = 'padding: 8px 16px; border: 1px solid #4caf50; border-radius: 4px; background: #4caf50; color: white; cursor: pointer; font-size: 14px;';
+
+        buttonContainer.appendChild(cancelBtn);
+        buttonContainer.appendChild(okBtn);
+        modalContent.appendChild(buttonContainer);
+
+        dialog.appendChild(modalContent);
+
+        // Add backdrop style
+        const backdropStyle = document.createElement('style');
+        backdropStyle.textContent = `dialog::backdrop { background-color: rgba(0, 0, 0, 0.5); }`;
+        dialog.appendChild(backdropStyle);
+
+        document.body.appendChild(dialog);
+        dialog.showModal(); // Browser-native modal with focus trap and top-layer rendering
+
+        // Click outside modal content to dismiss
+        dialog.addEventListener('click', (e) => {
+            if (e.target === dialog) { cleanup(); resolve(null); }
+        });
+
+        setTimeout(() => inputElement.focus(), 50);
+
+        const cleanup = () => {
+            dialog.close();
+            dialog.remove();
+        };
+
+        const submit = () => {
+            if (fieldDatatype === 'taxon') {
+                const taxonId = inputElement.dataset.taxonId;
+                const displayValue = inputElement.value.trim();
+                if (!taxonId && !displayValue) { cleanup(); resolve(null); return; }
+                cleanup();
+                resolve({ value: taxonId || displayValue, displayValue: displayValue });
+            } else {
+                const value = inputElement.value.trim();
+                if (!value) { cleanup(); resolve(null); return; }
+                cleanup();
+                resolve({ value: value, displayValue: value });
+            }
+        };
+
+        dialog.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                cleanup();
+                resolve(null);
+            } else if (e.key === 'Enter' && !suggestionsVisible) {
+                e.preventDefault();
+                submit();
+            }
+        });
+
+        // Native dialog cancel event (Escape key)
+        dialog.addEventListener('cancel', (e) => {
+            e.preventDefault();
+            cleanup();
+            resolve(null);
+        });
+
+        cancelBtn.addEventListener('click', () => { cleanup(); resolve(null); });
+        okBtn.addEventListener('click', submit);
+    });
+}
+
 async function performSingleAction(action, observationId, isIdentifyPage) {
     switch (action.type) {
         case 'follow':
@@ -1530,6 +1927,20 @@ async function performSingleAction(action, observationId, isIdentifyPage) {
                 return { success: false, error: safeErrorString(error) };
             }
             case 'observationField':
+                // Prompt for value at runtime if configured
+                if (action.promptForValue) {
+                    const modalResult = await showFieldPromptModal(
+                        action.fieldName,
+                        action.fieldDatatype || '',
+                        action.fieldAllowedValues || '',
+                        action.displayValue || action.fieldValue || ''
+                    );
+                    if (modalResult === null) {
+                        return { success: false, error: 'User cancelled value input', noActionNeeded: true };
+                    }
+                    action.fieldValue = modalResult.value;
+                    action.displayValue = modalResult.displayValue;
+                }
                 // Check if value is identical before calling addObservationField ---
                 const existingValueDetails = await getFieldValueDetails(observationId, action.fieldId);
                 const existingValue = existingValueDetails ? (existingValueDetails.displayValue || existingValueDetails.value) : null;
@@ -1609,6 +2020,8 @@ async function performSingleAction(action, observationId, isIdentifyPage) {
             return handleQualityMetricAPI(observationId, action.metric, action.vote);
         case 'addToList':
             return addOrRemoveObservationFromList(observationId, action.listId, action.remove);
+        case 'addTag':
+            return addTag(observationId, action.tagText);
         default:
             console.warn(`Unknown action type: ${action.type}`);
             return Promise.resolve();
@@ -3227,12 +3640,21 @@ async function executeBulkAction(selectedActionConfig, modal, isCancelledFunc) {
                         }
                     } else {
                         actionResult = await performSingleAction(
-                            action, 
-                            observationId, 
+                            action,
+                            observationId,
                             preActionStates[observationId] // Pass pre-action state for this specific observation
                         );
+                        // Update undo record with result-specific data for addTag
+                        if (action.type === 'addTag' && actionResult.success && actionResult.previousTags && preliminaryUndoRecord.observations[observationId]) {
+                            const undoAction = preliminaryUndoRecord.observations[observationId].undoActions.find(
+                                ua => ua.type === 'removeTag' && ua.tagText === action.tagText
+                            );
+                            if (undoAction) {
+                                undoAction.previousTags = actionResult.previousTags;
+                            }
+                        }
                     }
-                    
+
                     let resultForSummary = { ...actionResult, observationId, action: action.type };
                     if (action.type === 'observationField') resultForSummary.fieldId = action.fieldId;
                     // Add other potential differentiators if actions of same type can vary (e.g. annotation field ID)
@@ -3452,6 +3874,14 @@ function handleActionResult(result, action, observationId, preliminaryUndoRecord
             if (undoAction) {
                 undoAction.identificationUUID = result.identificationUUID;
                 console.log(`Updated undo action with identification UUID: ${result.identificationUUID}`);
+            }
+        } else if (action.type === 'addTag' && result.previousTags) {
+            const undoAction = preliminaryUndoRecord.observations[observationId].undoActions.find(
+                ua => ua.type === 'removeTag' && ua.tagText === action.tagText
+            );
+            if (undoAction) {
+                undoAction.previousTags = result.previousTags;
+                console.log(`Updated undo action with previous tags for observation ${observationId}`);
             }
         }
     } else {
@@ -3810,6 +4240,13 @@ async function generatePreliminaryUndoRecord(action, observationIds, preActionSt
                         remove: !actionItem.remove // Invert the remove action for undo
                     };
                     break;
+                case 'addTag':
+                    undoAction = {
+                        type: 'removeTag',
+                        tagText: actionItem.tagText,
+                        previousTags: null // Will be updated from action result
+                    };
+                    break;
             }
             if (undoAction) {
                 undoRecord.observations[observationId].undoActions.push(undoAction);
@@ -3865,6 +4302,9 @@ function generateUndoSummary(undoRecord) {
                     break;
                 case 'removeQualityMetric':
                     summary += `  - Remove quality metric ${undoAction.metric}\n`;
+                    break;
+                case 'removeTag':
+                    summary += `  - Remove tag "${undoAction.tagText}"\n`;
                     break;
             }
         });
