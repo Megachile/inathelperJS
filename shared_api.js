@@ -1060,35 +1060,61 @@ async function makeAPIRequest(endpoint, options = {}) {
     if (options.method === 'DELETE') {
         fullUrl += '?delete=true';
     }
-    console.log(`Making ${options.method || 'GET'} request to: ${fullUrl}`);
-    try {
-        const response = await fetch(fullUrl, {
-            ...options,
-            headers
-        });
-        console.log(`Response status: ${response.status}`);
-        console.log('Response headers:', response.headers);
+
+    // Retry on 429 (rate limit) and transient network errors. Honor Retry-After
+    // header when present; otherwise exponential backoff. Don't retry other 4xx —
+    // those are user/payload errors. iNat doesn't document 429 format and may not
+    // include Retry-After, so we fall back to (200ms * 2^attempt).
+    const maxRetries = options.maxRetries ?? 3;
+    const baseDelay = options.baseDelay ?? 200;
+    const fetchOptions = { ...options, headers };
+    delete fetchOptions.maxRetries;
+    delete fetchOptions.baseDelay;
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        let response;
+        try {
+            response = await fetch(fullUrl, fetchOptions);
+        } catch (networkError) {
+            // TypeError → DNS failure, offline, CORS preflight failure, etc.
+            if (attempt < maxRetries) {
+                const delay = baseDelay * Math.pow(2, attempt);
+                await new Promise(r => setTimeout(r, delay));
+                continue;
+            }
+            console.error('API request failed (network error):', networkError);
+            throw networkError;
+        }
+
+        if (response.status === 429 && attempt < maxRetries) {
+            const retryAfterRaw = response.headers.get('Retry-After');
+            const retryAfterSeconds = retryAfterRaw ? parseInt(retryAfterRaw, 10) : NaN;
+            const delay = !isNaN(retryAfterSeconds) && retryAfterSeconds > 0
+                ? retryAfterSeconds * 1000
+                : baseDelay * Math.pow(2, attempt);
+            await new Promise(r => setTimeout(r, delay));
+            continue;
+        }
+
         const responseText = await response.text();
         if (!response.ok) {
-            // This is where we modify the error object
             const error = new Error(`HTTP error! status: ${response.status}, body: ${responseText}`);
             error.status = response.status;
             error.responseBody = responseText;
+            console.error('API request failed:', error);
             throw error;
         }
         if (responseText) {
             try {
-                const responseData = JSON.parse(responseText);
-                return responseData;
+                return JSON.parse(responseText);
             } catch (e) {
                 return responseText;
             }
         }
         return null;
-    } catch (error) {
-        console.error('API request failed:', error);
-        throw error;
     }
+    // Shouldn't be reachable — every iteration either returns or continues.
+    throw new Error('makeAPIRequest: retry loop exhausted without resolving');
 }
 
 // Initialize and test JWT when the script loads

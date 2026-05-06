@@ -3970,33 +3970,9 @@ async function generatePreActionStates(observationIds, checkCancelled, modal) {
     console.log('Fetching pre-action states for', observationIds.length, 'observations');
     const preActionStates = {};
     const failedFetches = [];
-    const maxRetries = 3;
-    const baseDelay = 200;
     const statusElement = modal ? modal.querySelector('#bulk-action-status') : null;
 
-    async function fetchWithRetry(url, retries = 0) {
-        try {
-            const response = await fetch(url);
-            if (response.status === 429) {
-                if (retries < maxRetries) {
-                    const delay = baseDelay * Math.pow(2, retries);
-                    console.log(`Rate limited, retrying after ${delay}ms`);
-                    await new Promise(resolve => setTimeout(resolve, delay));
-                    return fetchWithRetry(url, retries + 1);
-                } else {
-                    throw new Error('Max retries reached');
-                }
-            }
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            return await response.json();
-        } catch (error) {
-            console.error(`Error fetching ${url}:`, error);
-            throw error;
-        }
-    }
-
+    // Retry/backoff on 429 is now handled centrally by makeAPIRequest.
     // Fetch observations in batches using the API's multi-ID support
     const batchSize = 30; // API supports up to 30 IDs per request
     for (let i = 0; i < observationIds.length; i += batchSize) {
@@ -4016,7 +3992,7 @@ async function generatePreActionStates(observationIds, checkCancelled, modal) {
 
         try {
             // Fetch all observations in this batch with a single API call
-            const obsData = await fetchWithRetry(`${API_URL}/observations/${idsParam}`);
+            const obsData = await makeAPIRequest(`/observations/${idsParam}`);
 
             // Store each observation's data
             for (const obs of obsData.results) {
