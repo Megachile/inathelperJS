@@ -1,5 +1,3 @@
-console.log("Content script loaded. URL:", window.location.href);
-
 function safeErrorString(error) {
     if (!error) return 'Unknown error';
     if (typeof error === 'string') return error;
@@ -49,7 +47,6 @@ let currentObservationId = null;
 let checkInterval = null;
 let observationTabsContainer = null;
 let hasMoved = false;
-let debugMode = false; 
 let bulkActionModeEnabled = false;
 let selectedObservations = new Set();
 let currentUserId = null;
@@ -83,19 +80,9 @@ async function getCurrentUserId() {
     }
 }
 
-function debugLog(...args) {
-    if (debugMode) {
-        console.log(...args);
-    }
-}
-
-function enableDebugMode() {
-    debugMode = true;
-}
-
-function disableDebugMode() {
-    debugMode = false;
-}
+// debugMode / debugLog / enable/disableDebugMode are defined in shared_api.js
+// (loaded before content.js per the manifest) so all four load contexts share
+// one flag and helper.
 
 const qualityMetrics = [
     { value: 'needs_id', label: 'Can the Community Taxon still be confirmed or improved?' },
@@ -267,7 +254,7 @@ function handleAllShortcuts(event) {
                     actionSelectModal.value = buttonConfig.id;
                     // Manually trigger the change event to update description and enable Apply button
                     actionSelectModal.dispatchEvent(new Event('change'));
-                    console.log(`Shortcut selected action: ${buttonConfig.name}`);
+                    debugLog(`Shortcut selected action: ${buttonConfig.name}`);
                     return; // Shortcut handled
                 }
             }
@@ -388,7 +375,7 @@ browserAPI.storage.local.get('buttonPosition', function(data) {
 });
 
 function updatePositions() {
-    console.log('Update Positions called');
+    debugLog('Update Positions called');
     const buttonDiv = document.getElementById('custom-extension-container').parentElement;
     const sortButtonContainer = document.getElementById('sort-buttons-container');
     if (!buttonDiv || !sortButtonContainer) {
@@ -448,7 +435,7 @@ function updatePositions() {
 }
 
 function updateBulkButtonPosition() {
-    console.log('Updating bulk button position');
+    debugLog('Updating bulk button position');
     const bulkButtonContainer = document.getElementById('bulk-action-container');
     if (!bulkButtonContainer) return;
 
@@ -528,7 +515,7 @@ function extractObservationId() {
 
     // Only log if there's a change or unexpected state
     if (JSON.stringify(currentState) !== JSON.stringify(lastLoggedState)) {
-        console.log('extractObservationId: State changed', {
+        debugLog('extractObservationId: State changed', {
             url: currentState.url,
             observationId: currentState.observationId,
             modalFound: currentState.modalFound,
@@ -536,18 +523,18 @@ function extractObservationId() {
         });
 
         if (!currentState.observationId) {
-            console.log('extractObservationId: No valid observation ID found');
+            debugLog('extractObservationId: No valid observation ID found');
         }
 
         if (!currentState.modalFound && !currentState.gridFound) {
-            console.log('extractObservationId: Neither modal nor grid found');
+            debugLog('extractObservationId: Neither modal nor grid found');
         }
 
         lastLoggedState = currentState;
     }
 
     if (currentState.observationId !== currentObservationId) {
-        console.log('extractObservationId: New Observation ID:', currentState.observationId);
+        debugLog('extractObservationId: New Observation ID:', currentState.observationId);
         currentObservationId = currentState.observationId;
         createOrUpdateIdDisplay(currentState.observationId || 'Unknown');
     }
@@ -555,21 +542,21 @@ function extractObservationId() {
 
 function extractObservationIdFromUrl() {
     const url = window.location.href;
-    console.log('Current URL:', url);
+    debugLog('Current URL:', url);
     const urlPattern = /https:\/\/www\.inaturalist\.org\/observations\/(\d+)/;
     const match = url.match(urlPattern);
 
     if (match && match[1]) {
-        console.log('Extracted observation ID from URL:', match[1]);
+        debugLog('Extracted observation ID from URL:', match[1]);
         return match[1];
     }
 
     if (url.includes('/observations/identify')) {
-        console.log('On identify page, no observation ID in URL');
+        debugLog('On identify page, no observation ID in URL');
         return null;
     }
 
-    console.log('Unable to extract observation ID from URL:', url);
+    debugLog('Unable to extract observation ID from URL:', url);
     return null;
 }
 
@@ -577,7 +564,7 @@ function setupObservationTabsObserver() {
     debugLog('Setting up observation tabs observer');
     observationTabsContainer = document.querySelector('.ObservationsPane');
     if (!observationTabsContainer) {
-        console.log('Observation tabs container not found, retrying in 1 second...');
+        debugLog('Observation tabs container not found, retrying in 1 second...');
         setTimeout(setupObservationTabsObserver, 1000);
         return;
     }
@@ -590,7 +577,7 @@ function setupObservationTabsObserver() {
                 debugLog('New data-id detected:', newId);
                 if (newId && newId !== currentObservationId) {
                     currentObservationId = newId;
-                    console.log('Current Observation ID (from tab change):', currentObservationId);
+                    debugLog('Current Observation ID (from tab change):', currentObservationId);
                     createOrUpdateIdDisplay(currentObservationId);
                 }
                 break;
@@ -599,7 +586,7 @@ function setupObservationTabsObserver() {
     });
 
     observer.observe(observationTabsContainer, { attributes: true, attributeFilter: ['data-id'] });
-    console.log('Observer set up successfully');
+    debugLog('Observer set up successfully');
 }
 
 function logModalStructure() {
@@ -665,7 +652,7 @@ document.body.appendChild(buttonDiv);
 
 async function addObservationField(observationId, fieldId, value, button = null) {
         if (!observationId) {
-        console.log('No observation ID provided. Please select an observation first.');
+        debugLog('No observation ID provided. Please select an observation first.');
         return { success: false, error: 'No observation ID provided' };
         }
 
@@ -700,11 +687,11 @@ async function addObservationField(observationId, fieldId, value, button = null)
                 throw new Error(`Network response was not ok. Status: ${response.status}, Body: ${text}`);
             }
             const responseData = await response.json();
-            console.log('Added observation field:', responseData);
+            debugLog('Added observation field:', responseData);
             return { success: true, data: responseData };
         } catch (error) {
             if (error.message.includes("Observation user does not accept fields from others")) {
-                console.log('User does not accept fields from others:', error);
+                debugLog('User does not accept fields from others:', error);
                 return { success: false, error: 'User does not accept fields from others' };
             } else {
                 console.error('Error in adding observation field:', error);
@@ -715,7 +702,7 @@ async function addObservationField(observationId, fieldId, value, button = null)
 
 async function addAnnotation(observationId, attributeId, valueId) {
     if (!observationId) {
-        console.log('No observation ID provided. Please select an observation first.');
+        debugLog('No observation ID provided. Please select an observation first.');
         return { success: false, error: 'No observation ID provided' };
     }
 
@@ -746,11 +733,11 @@ async function addAnnotation(observationId, attributeId, valueId) {
         });
         const responseData = await response.json();
         if (!response.ok || responseData.errors) {
-            console.log(`Annotation POST failed (HTTP ${response.status}), attempting to vote on existing:`, responseData.errors || responseData);
+            debugLog(`Annotation POST failed (HTTP ${response.status}), attempting to vote on existing:`, responseData.errors || responseData);
             const voteResult = await voteOnExistingAnnotation(observationId, attributeId, valueId, jwt);
             return voteResult;
         } else {
-            console.log('Annotation added successfully:', responseData);
+            debugLog('Annotation added successfully:', responseData);
             return { success: true, data: responseData, uuid: responseData.uuid };
         }
     } catch (error) {
@@ -785,7 +772,7 @@ async function voteOnExistingAnnotation(observationId, attributeId, valueId, jwt
                 ann.controlled_attribute_id === parseInt(attributeId)
             );
             if (conflictingAnnotation) {
-                console.log(`Found conflicting annotation (value ${conflictingAnnotation.controlled_value_id} vs desired ${valueId}), attempting to replace`);
+                debugLog(`Found conflicting annotation (value ${conflictingAnnotation.controlled_value_id} vs desired ${valueId}), attempting to replace`);
                 // Try to delete the conflicting annotation (only works if it's ours)
                 const deleteResponse = await fetch(`${API_URL}/annotations/${conflictingAnnotation.uuid}`, {
                     method: 'DELETE',
@@ -812,14 +799,14 @@ async function voteOnExistingAnnotation(observationId, attributeId, valueId, jwt
                     if (!retryResponse.ok || retryData.errors) {
                         // Re-add failed — DELETE may have only removed our vote, annotation still exists
                         // Fall through to disagree vote below
-                        console.log(`Re-add failed after DELETE (annotation likely belongs to another user), voting to disagree`);
+                        debugLog(`Re-add failed after DELETE (annotation likely belongs to another user), voting to disagree`);
                     } else {
                         return { success: true, data: retryData, uuid: retryData.uuid, action: 'replaced' };
                     }
                 }
                 {
                     // Can't replace annotation, vote to disagree instead
-                    console.log(`Voting to disagree on conflicting annotation`);
+                    debugLog(`Voting to disagree on conflicting annotation`);
                     const voteUrl = `${API_URL}/votes/vote/annotation/${conflictingAnnotation.uuid}`;
                     const voteResponse = await fetch(voteUrl, {
                         method: 'POST',
@@ -851,11 +838,11 @@ async function voteOnExistingAnnotation(observationId, attributeId, valueId, jwt
         });
 
         if (voteResponse.ok) {
-            console.log(`Voted in agreement on existing annotation (UUID: ${existingAnnotation.uuid})`);
+            debugLog(`Voted in agreement on existing annotation (UUID: ${existingAnnotation.uuid})`);
             return { success: true, uuid: existingAnnotation.uuid, action: 'voted' };
         } else {
             const errorData = await voteResponse.json().catch(() => ({}));
-            console.log('Vote failed:', errorData);
+            debugLog('Vote failed:', errorData);
             return { success: false, error: 'Vote on annotation failed', data: errorData };
         }
     } catch (error) {
@@ -866,7 +853,7 @@ async function voteOnExistingAnnotation(observationId, attributeId, valueId, jwt
 
 async function addObservationToProject(observationId, projectId) {
     if (!observationId) {
-        console.log('No observation ID provided. Please select an observation first.');
+        debugLog('No observation ID provided. Please select an observation first.');
         return { success: false, error: 'No observation ID provided' };
     }
 
@@ -895,10 +882,10 @@ async function addObservationToProject(observationId, projectId) {
         });
         const responseData = await response.json();
         if (responseData.errors) {
-            console.log('Observation not added to project:', responseData.errors);
+            debugLog('Observation not added to project:', responseData.errors);
             return { success: false, message: 'Observation not added to project', data: responseData };
         } else {
-            console.log('Observation added to project successfully:', responseData);
+            debugLog('Observation added to project successfully:', responseData);
             return { success: true, data: responseData };
         }
     } catch (error) {
@@ -909,7 +896,7 @@ async function addObservationToProject(observationId, projectId) {
 
 async function addComment(observationId, commentBody) {
     if (!observationId) {
-        console.log('No observation ID provided. Please select an observation first.');
+        debugLog('No observation ID provided. Please select an observation first.');
         return { success: false, error: 'No observation ID provided' };
     }
 
@@ -939,10 +926,10 @@ async function addComment(observationId, commentBody) {
         });
         const responseData = await response.json();
         if (responseData.errors) {
-            console.log('Comment not added:', responseData.errors);
+            debugLog('Comment not added:', responseData.errors);
             return { success: false, message: 'Comment not added', data: responseData };
         } else {
-            console.log('Comment added successfully:', responseData);
+            debugLog('Comment added successfully:', responseData);
             return { success: true, data: responseData, uuid: responseData.uuid };
         }
     } catch (error) {
@@ -979,7 +966,7 @@ async function addTag(observationId, tagText) {
 
         // Check if tag already exists
         if (existingTags.some(t => t.toLowerCase() === tagText.trim().toLowerCase())) {
-            console.log(`Tag "${tagText}" already exists on observation ${observationId}`);
+            debugLog(`Tag "${tagText}" already exists on observation ${observationId}`);
             return { success: true, noActionNeeded: true, message: 'Tag already exists' };
         }
 
@@ -1000,7 +987,7 @@ async function addTag(observationId, tagText) {
         });
 
         if (response.ok) {
-            console.log(`Tag "${tagText}" added to observation ${observationId}`);
+            debugLog(`Tag "${tagText}" added to observation ${observationId}`);
             return { success: true, previousTags: existingTags };
         } else {
             const errorData = await response.json().catch(() => ({}));
@@ -1020,7 +1007,7 @@ async function addTag(observationId, tagText) {
 
 async function addTaxonId(observationId, taxonId, comment = '', disagreement = false) {
     if (!observationId) {
-        console.log('No observation ID provided. Please select an observation first.');
+        debugLog('No observation ID provided. Please select an observation first.');
         return { success: false, error: 'No observation ID provided' };
     }
 
@@ -1051,10 +1038,10 @@ async function addTaxonId(observationId, taxonId, comment = '', disagreement = f
         });
         const responseData = await response.json();
         if (responseData.errors) {
-            console.log('Taxon ID not added:', responseData.errors);
+            debugLog('Taxon ID not added:', responseData.errors);
             return { success: false, message: 'Taxon ID not added', data: responseData };
         } else {
-            console.log('Taxon ID added successfully:', responseData);
+            debugLog('Taxon ID added successfully:', responseData);
             return { success: true, data: responseData, identificationUUID: responseData.uuid };
         }
     } catch (error) {
@@ -1104,7 +1091,7 @@ async function handleQualityMetricAPI(observationId, metric, vote) {
         }
         
         const responseData = await response.json();
-        console.log(`Quality metric ${metric} ${vote} successful:`, responseData);
+        debugLog(`Quality metric ${metric} ${vote} successful:`, responseData);
 
         if (metric !== 'needs_id') {
             await updateQualityMetrics(observationId);
@@ -1119,7 +1106,7 @@ async function handleQualityMetricAPI(observationId, metric, vote) {
 
 async function handleQualityMetric(observationId, metricValue, vote) {
     const metricLabel = getMetricLabel(metricValue);
-    console.log(`Handling quality metric: ${metricLabel}, vote: ${vote}`);
+    debugLog(`Handling quality metric: ${metricLabel}, vote: ${vote}`);
     
     const metricsContainer = document.querySelector('.QualityMetrics');
     if (!metricsContainer) {
@@ -1153,7 +1140,7 @@ async function handleQualityMetric(observationId, metricValue, vote) {
     }
 
     const currentState = getCurrentState(agreeCell, disagreeCell);
-    console.log(`Current state for ${metricLabel}: ${currentState}`);
+    debugLog(`Current state for ${metricLabel}: ${currentState}`);
 
     let buttonToClick;
     switch (vote) {
@@ -1170,14 +1157,14 @@ async function handleQualityMetric(observationId, metricValue, vote) {
     }
 
     if (buttonToClick) {
-        console.log(`Clicking ${buttonToClick === agreeButton ? 'agree' : 'disagree'} button for "${metricLabel}"`);
+        debugLog(`Clicking ${buttonToClick === agreeButton ? 'agree' : 'disagree'} button for "${metricLabel}"`);
         buttonToClick.click();
         await waitForStateChange(targetRow, currentState);
     } else {
-        console.log(`No action needed for ${metricLabel} - already in desired state`);
+        debugLog(`No action needed for ${metricLabel} - already in desired state`);
     }
 
-    console.log(`${metricLabel} ${vote} action completed`);
+    debugLog(`${metricLabel} ${vote} action completed`);
     return { success: true };
 }
 
@@ -1251,7 +1238,7 @@ async function copyObservationField(observationId, sourceFieldId, targetFieldId)
             })
         });
 
-        console.log('Field value copied successfully:', postResponse);
+        debugLog('Field value copied successfully:', postResponse);
         return { success: true, data: postResponse };
     } catch (error) {
         console.error('Error in copyObservationField:', error);
@@ -1520,27 +1507,27 @@ function createOrUpdateIdDisplay(id) {
 }
 
 window.addEventListener('load', () => {
-    console.log('Window load event fired');
+    debugLog('Window load event fired');
     extractObservationId();
     if (window.location.href.includes('/observations/identify')) {
-        console.log('On identify page, creating bulk action buttons');
+        debugLog('On identify page, creating bulk action buttons');
         createBulkActionButtons();
         updateSelectedObservations();
         // Add this check
         setTimeout(() => {
             const enableButton = document.getElementById('enable-bulk-mode-button');
             if (enableButton) {
-                console.log('Enable button exists after timeout');
-                console.log('Enable button display:', getComputedStyle(enableButton).display);
-                console.log('Enable button position:', enableButton.style.cssText);
+                debugLog('Enable button exists after timeout');
+                debugLog('Enable button display:', getComputedStyle(enableButton).display);
+                debugLog('Enable button position:', enableButton.style.cssText);
             } else {
-                console.log('Enable button not found after timeout');
+                debugLog('Enable button not found after timeout');
             }
         }, 1000);
     } else if (window.location.pathname.match(/^\/observations\/\d+/)) {
-        console.log('On individual observation page');
+        debugLog('On individual observation page');
         const observationId = window.location.pathname.split('/').pop();
-        console.log('Observation ID from URL:', observationId);
+        debugLog('Observation ID from URL:', observationId);
         currentObservationId = observationId;
         createOrUpdateIdDisplay(observationId);
     }
@@ -1622,7 +1609,7 @@ function clearObservationId() {
     if (idDisplay) {
         idDisplay.textContent = 'Current Observation ID: None';
     }
-    console.log('Observation ID cleared');
+    debugLog('Observation ID cleared');
 }
 
 async function performActions(actions) {
@@ -1886,7 +1873,7 @@ async function performSingleAction(action, observationId, isIdentifyPage) {
             const shouldBeFollowed = action.follow === 'follow';
             
             if (isCurrentlyFollowed === shouldBeFollowed) {
-                console.log(`Observation ${observationId} already in desired follow state:`, shouldBeFollowed);
+                debugLog(`Observation ${observationId} already in desired follow state:`, shouldBeFollowed);
                 return { success: true, message: 'Already in desired state' };
             }
             
@@ -1896,7 +1883,7 @@ async function performSingleAction(action, observationId, isIdentifyPage) {
         case 'withdrawId':
             try {
                 const currentUserId = await getCurrentUserId();
-                console.log('Looking up current user ID:', currentUserId);
+                debugLog('Looking up current user ID:', currentUserId);
                 
                 // Get current identification so we can store it for undo
                 const response = await makeAPIRequest(`/observations/${observationId}`);
@@ -1966,7 +1953,7 @@ async function performSingleAction(action, observationId, isIdentifyPage) {
     
     
                 if (existingValue !== null && isIdentical) {
-                    console.log(`Observation Field ${action.fieldName} for obs ${observationId} already has value "${proposedDisplayValue}". Skipping API call.`);
+                    debugLog(`Observation Field ${action.fieldName} for obs ${observationId} already has value "${proposedDisplayValue}". Skipping API call.`);
                     return { 
                         success: true, 
                         message: 'Value already set to the desired value.', 
@@ -1999,7 +1986,7 @@ async function performSingleAction(action, observationId, isIdentifyPage) {
                 }
 
                 if (result.noActionNeeded) {
-                    console.log(`No action needed for observation ${observationId}: ${result.message}`);
+                    debugLog(`No action needed for observation ${observationId}: ${result.message}`);
                 }
 
                 return result;
@@ -2055,11 +2042,11 @@ function displayWarning(message) {
 }
 
 async function getCurrentQualityMetricState(observationId) {
-    console.log(`Getting current quality metric state for observation ${observationId}`);
+    debugLog(`Getting current quality metric state for observation ${observationId}`);
     try {
         const response = await makeAPIRequest(`/observations/${observationId}`);
         const observation = response.results[0];
-        console.log(`Observation data:`, observation);
+        debugLog(`Observation data:`, observation);
 
         const qualityMetrics = {};
         observation.quality_metrics.forEach(qm => {
@@ -2075,7 +2062,7 @@ async function getCurrentQualityMetricState(observationId) {
             qualityMetrics['needs_id'] = null;  // No vote for needs_id
         }
 
-        console.log(`Current quality metrics:`, qualityMetrics);
+        debugLog(`Current quality metrics:`, qualityMetrics);
         return qualityMetrics;
     } catch (error) {
         console.error(`Error fetching quality metric state for observation ${observationId}:`, error);
@@ -2112,20 +2099,20 @@ function generateUndoRecord(preliminaryUndoRecord, results, overwrittenValues) {
                     finalUndoRecord.observations[observationId].overwrittenValues = 
                         overwrittenValues[observationId];
                 }
-                console.log(`Undo record for observation ${observationId}:`, 
+                debugLog(`Undo record for observation ${observationId}:`, 
                     finalUndoRecord.observations[observationId]);
             }
         }
     });
 
     finalUndoRecord.affectedObservationsCount = Object.keys(finalUndoRecord.observations).length;
-    console.log('Final undo record:', finalUndoRecord);
+    debugLog('Final undo record:', finalUndoRecord);
     
     return finalUndoRecord;
 }
 
 function refreshObservation() {
-    console.log('refreshObservation called');
+    debugLog('refreshObservation called');
     return new Promise((resolve, reject) => {
         const logState = {
             url: window.location.href,
@@ -2137,16 +2124,16 @@ function refreshObservation() {
             screenHeight: window.innerHeight,
             timeStamp: new Date().toISOString()
         };
-        console.log('Refresh attempt state:', logState);
+        debugLog('Refresh attempt state:', logState);
 
         if (!refreshEnabled || !currentObservationId) {
-            console.log('Refresh not enabled or no current observation ID');
+            debugLog('Refresh not enabled or no current observation ID');
             resolve();
             return;
         }
 
         if (window.location.pathname.match(/^\/observations\/\d+/)) {
-            console.log('On individual observation page, reloading');
+            debugLog('On individual observation page, reloading');
             window.location.reload();
             return;
         }
@@ -2272,19 +2259,19 @@ async function updateObservationPage(observationId) {
     try {
         const favContainer = document.querySelector('.Faves');
         if (!favContainer) {
-            console.log('Fav button container not found');
+            debugLog('Fav button container not found');
             return false;
         }
 
         const linky = favContainer.querySelector('.linky');
         const favButton = favContainer.querySelector('.action');
         if (!linky || !favButton) {
-            console.log('Fav button elements not found');
+            debugLog('Fav button elements not found');
             return false;
         }
         const linkText = linky.textContent;
         const originalState = linkText === "You faved this!" ? 'faved' : 'unfaved';
-        console.log(`Original fav state: ${originalState}`);
+        debugLog(`Original fav state: ${originalState}`);
 
         // Click the fav button
         favButton.click();
@@ -2299,8 +2286,8 @@ async function updateObservationPage(observationId) {
         // Wait for the state to revert
         await waitForFavStateChange(originalState === 'faved' ? 'unfaved' : 'faved');
 
-        console.log('Fav button clicked twice, returned to original state');
-        console.log('Triggered site refresh mechanism');
+        debugLog('Fav button clicked twice, returned to original state');
+        debugLog('Triggered site refresh mechanism');
         return true;
     } catch (error) {
         console.error('Error triggering site refresh:', error);
@@ -2355,9 +2342,9 @@ function isValidPageForButtons() {
 }
 
 function createDynamicButtons() {
-    console.log('createDynamicButtons called');
+    debugLog('createDynamicButtons called');
     if (!isValidPageForButtons()) {
-        console.log('Not a valid page for buttons, skipping creation');
+        debugLog('Not a valid page for buttons, skipping creation');
         return;
     }
 
@@ -2926,7 +2913,7 @@ function saveButtonOrder() {
     
     const order = uniqueOrderedIds; // Use the filtered unique list
 
-    console.log("Saving button order:", order); // Debug
+    debugLog("Saving button order:", order); // Debug
     
     browserAPI.storage.local.get('configurationSets', function(data) {
         const sets = data.configurationSets || [];
@@ -3098,7 +3085,7 @@ function loadButtonOrder() {
 createDynamicButtons();
 
 function createBulkActionButtons() {
-    console.log('Creating bulk action UI wrapper');
+    debugLog('Creating bulk action UI wrapper');
     // 1. Create a single parent wrapper for all bulk UI
     const bulkUiWrapper = document.createElement('div');
     bulkUiWrapper.id = 'bulk-ui-wrapper'; // New ID for the wrapper
@@ -3133,7 +3120,7 @@ function createBulkActionButtons() {
     // 6. Append the single wrapper to the body
     document.body.appendChild(bulkUiWrapper);
 
-    console.log('Bulk action UI created');
+    debugLog('Bulk action UI created');
     updateBulkButtonPosition(); // Position the new wrapper
 }
 
@@ -3278,7 +3265,7 @@ function disableBulkActionMode() {
 }
 
 function updateBulkButtonPosition() {
-    console.log('Updating bulk UI wrapper position');
+    debugLog('Updating bulk UI wrapper position');
     // This function now ONLY positions the single parent wrapper
     const bulkUiWrapper = document.getElementById('bulk-ui-wrapper');
     if (!bulkUiWrapper) return;
@@ -3318,7 +3305,7 @@ function toggleSelection(element) {
             } else {
                 selectedObservations.delete(observationId);
             }
-            console.log('Updated selections:', selectedObservations);
+            debugLog('Updated selections:', selectedObservations);
         }
     }
     updateVisualSelection();
@@ -3349,11 +3336,11 @@ function updateAllSelections() {
             }
         }
     });
-    console.log('Updated all selections:', selectedObservations);
+    debugLog('Updated all selections:', selectedObservations);
 }
 
 function selectAllObservations() {
-    console.log('Selecting all observations');
+    debugLog('Selecting all observations');
     getObservationElements().forEach(obs => obs.classList.add('selected'));
     updateAllSelections();
     updateBulkActionButtons();
@@ -3361,7 +3348,7 @@ function selectAllObservations() {
 }
 
 function invertSelection() {
-    console.log('Inverting selection');
+    debugLog('Inverting selection');
     getObservationElements().forEach(obs => obs.classList.toggle('selected'));
     updateAllSelections();
     updateBulkActionButtons();
@@ -3434,7 +3421,7 @@ document.body.addEventListener('click', (e) => {
             updateBulkActionButtons(); // Update button states (e.g., enabled/disabled)
             updateModalTitle();      // Update title of action selection modal if open
             
-            console.log('Selected observations count:', selectedObservations.size);
+            debugLog('Selected observations count:', selectedObservations.size);
         }
     }
 }, true); // Use capture phase
@@ -3466,7 +3453,7 @@ function updateSelectedObservations() {
     toRemove.forEach(id => selectedObservations.delete(id));
 
     if (toRemove.length > 0) {
-        console.log(`Removed ${toRemove.length} observations from selection due to filter change`);
+        debugLog(`Removed ${toRemove.length} observations from selection due to filter change`);
     }
 }
 
@@ -3538,7 +3525,7 @@ async function executeBulkAction(selectedActionConfig, modal, isCancelledFunc) {
             return { results: [], skippedObservations: [], overwrittenValues: {}, errorMessages: [] };
         }
 
-        console.log('Pre-action states:', preActionStates);
+        debugLog('Pre-action states:', preActionStates);
 
         const preliminaryUndoRecord = await generatePreliminaryUndoRecord(selectedActionConfig, observationIds, preActionStates);
         const preventionStates = {};
@@ -3598,7 +3585,7 @@ async function executeBulkAction(selectedActionConfig, modal, isCancelledFunc) {
                 }
                  if (observationSkippedThisIterationDueToSafeMode) {
                     // If any OF caused a safe mode skip, we skip all actions for this observation
-                     console.log(`Obs ${observationId} skipped entirely due to Safe Mode and existing OF values.`);
+                     debugLog(`Obs ${observationId} skipped entirely due to Safe Mode and existing OF values.`);
                      processedObservations++;
                      if (progressFill) await updateProgressBar(progressFill, (processedObservations / totalObservations) * 100);
                      if (statusElement) statusElement.textContent = `Processing observation ${processedObservations}/${totalObservations}...`;
@@ -3794,9 +3781,9 @@ async function executeAction(action, observationId, preActionStates, preliminary
     try {
         const shouldExecuteAction = determineIfActionShouldExecute(action, observationId, preActionStates, skippedObservations);
         if (shouldExecuteAction) {
-            console.log(`Performing action ${action.type} for observation ${observationId}`);
+            debugLog(`Performing action ${action.type} for observation ${observationId}`);
             const result = await performSingleAction(action, observationId, true);
-            console.log(`Action result:`, result);
+            debugLog(`Action result:`, result);
             handleActionResult(result, action, observationId, preliminaryUndoRecord, results, skippedObservations);
         }
     } catch (error) {
@@ -3808,10 +3795,10 @@ async function executeAction(action, observationId, preActionStates, preliminary
 function determineIfActionShouldExecute(action, observationId, preActionStates, skippedObservations) {
     if (action.type === 'qualityMetric') {
         const currentState = getCurrentQualityMetricState(observationId, action.metric);
-        console.log(`Current state for ${action.metric}:`, currentState);
+        debugLog(`Current state for ${action.metric}:`, currentState);
         
         if (currentState === action.vote) {
-            console.log(`Skipping ${action.metric} for observation ${observationId} as it's already in the desired state`);
+            debugLog(`Skipping ${action.metric} for observation ${observationId} as it's already in the desired state`);
             return false;
         }
     } else if (action.type === 'observationField' || action.type === 'copyObservationField') {
@@ -3822,20 +3809,20 @@ function determineIfActionShouldExecute(action, observationId, preActionStates, 
             fieldId = action.targetFieldId;
             fieldValue = getExistingObservationFieldValue(preActionStates[observationId], action.sourceFieldId);
             if (fieldValue === null) {
-                console.log(`Observation ${observationId}: Source field ${action.sourceFieldId} does not exist or is empty - skipping`);
+                debugLog(`Observation ${observationId}: Source field ${action.sourceFieldId} does not exist or is empty - skipping`);
                 return false;
             }
         }
 
         const existingValue = getExistingObservationFieldValue(preActionStates[observationId], fieldId);
-        console.log(`Observation ${observationId}: Existing value: "${existingValue}", Desired value: "${fieldValue}"`);
+        debugLog(`Observation ${observationId}: Existing value: "${existingValue}", Desired value: "${fieldValue}"`);
         
         if (existingValue !== null) {
             if (existingValue === fieldValue) {
-                console.log(`Observation ${observationId}: Existing value matches desired value - silently skipping`);
+                debugLog(`Observation ${observationId}: Existing value matches desired value - silently skipping`);
                 return false;
             } else {
-/*                 console.log(`Observation ${observationId}: Existing value differs from desired value - skipping and adding to skipped list`);
+/*                 debugLog(`Observation ${observationId}: Existing value differs from desired value - skipping and adding to skipped list`);
                 skippedObservations.push(observationId); */
                 return true;
             }
@@ -3852,7 +3839,7 @@ function handleActionResult(result, action, observationId, preliminaryUndoRecord
             );
             if (undoAction) {
                 undoAction.commentUUID = result.commentUUID;
-                console.log(`Updated undo action with comment UUID: ${result.commentUUID}`);
+                debugLog(`Updated undo action with comment UUID: ${result.commentUUID}`);
             }
         } else if (action.type === 'annotation' && result.annotationUUID) {
             const undoAction = preliminaryUndoRecord.observations[observationId].undoActions.find(
@@ -3869,7 +3856,7 @@ function handleActionResult(result, action, observationId, preliminaryUndoRecord
             );
             if (undoAction) {
                 undoAction.identificationUUID = result.identificationUUID;
-                console.log(`Updated undo action with identification UUID: ${result.identificationUUID}`);
+                debugLog(`Updated undo action with identification UUID: ${result.identificationUUID}`);
             }
         } else if (action.type === 'addTag' && result.previousTags) {
             const undoAction = preliminaryUndoRecord.observations[observationId].undoActions.find(
@@ -3877,7 +3864,7 @@ function handleActionResult(result, action, observationId, preliminaryUndoRecord
             );
             if (undoAction) {
                 undoAction.previousTags = result.previousTags;
-                console.log(`Updated undo action with previous tags for observation ${observationId}`);
+                debugLog(`Updated undo action with previous tags for observation ${observationId}`);
             }
         }
     } else {
@@ -3897,7 +3884,7 @@ function handleActionResults(results, skippedObservations, undoRecord, errorMess
     
     if (skippedCount > 0) {
         const skippedURL = generateObservationURL(skippedObservations);
-        console.log('Generated URL for skipped observations:', skippedURL);
+        debugLog('Generated URL for skipped observations:', skippedURL);
         createActionResultsModal(skippedCount, skippedURL, errorMessages);
     } else if (errorCount > 0) {
         createErrorModal(errorMessages);
@@ -3905,7 +3892,7 @@ function handleActionResults(results, skippedObservations, undoRecord, errorMess
         alert(message);
     }
 
-    console.log('Bulk action results:', results);
+    debugLog('Bulk action results:', results);
 }
 
 async function getCurrentQualityMetricState(observationId, metric) {
@@ -3924,13 +3911,13 @@ async function getCurrentQualityMetricState(observationId, metric) {
 }
 
 function getExistingObservationFieldValue(observationState, fieldId) {
-    console.log('Checking existing value for field:', fieldId, 'in state:', observationState);
+    debugLog('Checking existing value for field:', fieldId, 'in state:', observationState);
     if (observationState && observationState.ofvs) {
         const field = observationState.ofvs.find(f => f.field_id.toString() === fieldId);
-        console.log('Found field:', field);
+        debugLog('Found field:', field);
         return field ? field.value : null;
     }
-    console.log('No existing value found');
+    debugLog('No existing value found');
     return null;
 }
 
@@ -3941,8 +3928,8 @@ function storeUndoRecord(undoRecord) {
             let undoRecords = result.undoRecords || [];
             undoRecords.push(undoRecord);
             browserAPI.storage.local.set({undoRecords: undoRecords}, function() {
-                console.log('Undo record stored:', undoRecord);
-                console.log('Total undo records:', undoRecords.length);
+                debugLog('Undo record stored:', undoRecord);
+                debugLog('Total undo records:', undoRecords.length);
                 // Notify other tabs about the new undo record
                 browserAPI.runtime.sendMessage({action: "undoRecordAdded", record: undoRecord});
                 resolve();
@@ -4311,7 +4298,7 @@ function getQualityMetricName(metric) {
 
 function showUndoRecordsModal() {
     getUndoRecords(function(undoRecords) {
-        console.log('Retrieved undo records:', undoRecords);
+        debugLog('Retrieved undo records:', undoRecords);
         if (undoRecords.length === 0) {
             alert('No undo records available.');
             return;
@@ -4757,7 +4744,7 @@ function loadConfigurationSets() {
             currentSetName = currentSet.name;
             browserAPI.storage.local.set({ contentScriptActiveSetName: currentSetName }); // Persist this correction
         } else if (!currentSet && !currentSetName) {
-             console.log("content.js: No active set to render.");
+             debugLog("content.js: No active set to render.");
         }
 
 
@@ -4924,7 +4911,7 @@ function switchConfigurationSet(setName) {
 
 
 function updateBulkActionDropdown(actionSelect, availableActions) {
-    console.log('Updating bulk action dropdown. Available actions:', availableActions);
+    debugLog('Updating bulk action dropdown. Available actions:', availableActions);
     if (actionSelect) {
         // Save the current selection
         const currentSelection = actionSelect.value;
@@ -5197,7 +5184,7 @@ function clearSelection() {
     getObservationElements().forEach(obs => obs.classList.remove('selected'));
     updateBulkActionButtons();
     updateModalTitle();
-    console.log('Selection cleared');
+    debugLog('Selection cleared');
 }
 
 function updateModalTitle() {
@@ -5574,7 +5561,7 @@ function updateHighlightZIndex(element) {
 }
 
 async function validateBulkAction(selectedAction, observationIds, getIsCancelled) {
-    console.log('Starting validateBulkAction with:', {selectedAction, observationIds});
+    debugLog('Starting validateBulkAction with:', {selectedAction, observationIds});
     const results = {
         total: observationIds.length,
         toProcess: [],
@@ -5585,7 +5572,7 @@ async function validateBulkAction(selectedAction, observationIds, getIsCancelled
     };
 
     if (getIsCancelled && getIsCancelled()) {
-        console.log("validateBulkAction: Operation cancelled at the very beginning.");
+        debugLog("validateBulkAction: Operation cancelled at the very beginning.");
         throw new Error('ValidationCancelled');
     }
 
@@ -5606,7 +5593,7 @@ async function validateBulkAction(selectedAction, observationIds, getIsCancelled
 
     for (const observationId of observationIds) {
         if (getIsCancelled && getIsCancelled()) {
-            console.log("validateBulkAction: Operation cancelled. Aborting validation loop for observationId:", observationId);
+            debugLog("validateBulkAction: Operation cancelled. Aborting validation loop for observationId:", observationId);
             throw new Error('ValidationCancelled');
         }
 
@@ -5615,13 +5602,13 @@ async function validateBulkAction(selectedAction, observationIds, getIsCancelled
 
         for (const action of selectedAction.actions) {
             if (getIsCancelled && getIsCancelled()) {
-                console.log("validateBulkAction: Operation cancelled during field check for observationId:", observationId);
+                debugLog("validateBulkAction: Operation cancelled during field check for observationId:", observationId);
                 throw new Error('ValidationCancelled');
             }
             if (action.type === 'observationField') {
                 try {
                     const existingValueDetails = await getFieldValueDetails(observationId, action.fieldId);
-                    console.log(`VALIDATE_ACTION: Obs ${observationId}, Field ${action.fieldId}, existingValueDetails from getFieldValueDetails:`, 
+                    debugLog(`VALIDATE_ACTION: Obs ${observationId}, Field ${action.fieldId}, existingValueDetails from getFieldValueDetails:`, 
                         existingValueDetails ? JSON.parse(JSON.stringify(existingValueDetails)) : null); 
                     const proposed = results.proposedValues.get(action.fieldId); // {value, displayValue}
 
@@ -5645,7 +5632,7 @@ async function validateBulkAction(selectedAction, observationIds, getIsCancelled
                             if (!isIdentical) {
                                 let currentDisplayForModal = existingValueDetails.displayValue || existingValueDetails.value;
                                 // --- NEW LOGS ---
-                                console.log(`VALIDATE_ACTION: Obs ${observationId}, Field ${action.fieldId}: Initial currentDisplayForModal:`, currentDisplayForModal, `(Type: ${typeof currentDisplayForModal})`);
+                                debugLog(`VALIDATE_ACTION: Obs ${observationId}, Field ${action.fieldId}: Initial currentDisplayForModal:`, currentDisplayForModal, `(Type: ${typeof currentDisplayForModal})`);
                                 // --- END NEW LOGS ---
     
                                 if (typeof currentDisplayForModal === 'object' && currentDisplayForModal !== null) {
@@ -5654,8 +5641,8 @@ async function validateBulkAction(selectedAction, observationIds, getIsCancelled
                                 }
     
                                 // --- NEW LOGS ---
-                                console.log(`VALIDATE_ACTION: Obs ${observationId}, Field ${action.fieldId}: Final current for modal storage:`, String(currentDisplayForModal));
-                                console.log(`VALIDATE_ACTION: Obs ${observationId}, Field ${action.fieldId}: Final proposed for modal storage:`, String(proposed.displayValue));
+                                debugLog(`VALIDATE_ACTION: Obs ${observationId}, Field ${action.fieldId}: Final current for modal storage:`, String(currentDisplayForModal));
+                                debugLog(`VALIDATE_ACTION: Obs ${observationId}, Field ${action.fieldId}: Final proposed for modal storage:`, String(proposed.displayValue));
                                 // --- END NEW LOGS ---
     
                                 differingExistingFieldsForOverwriteMode.set(action.fieldId, {
@@ -5703,11 +5690,11 @@ async function validateBulkAction(selectedAction, observationIds, getIsCancelled
     }
     
     if (getIsCancelled && getIsCancelled()) {
-        console.log("validateBulkAction: Operation cancelled just before returning results.");
+        debugLog("validateBulkAction: Operation cancelled just before returning results.");
         throw new Error('ValidationCancelled');
     }
 
-    console.log("validateBulkAction finished. Results:", JSON.parse(JSON.stringify(results))); // Deep copy for logging complex map
+    debugLog("validateBulkAction finished. Results:", JSON.parse(JSON.stringify(results))); // Deep copy for logging complex map
     return results;
 }
 
@@ -5975,7 +5962,7 @@ async function createActionModal(preSelectedActionId = null) {
         if (preSelectedActionId) {
             actionSelect.value = preSelectedActionId;
             actionSelect.dispatchEvent(new Event('change'));
-            console.log(`Pre-selected action in dropdown: ${preSelectedActionId}`);
+            debugLog(`Pre-selected action in dropdown: ${preSelectedActionId}`);
         } else if(actionSelect.value) {
             actionSelect.dispatchEvent(new Event('change'));
         } else {
@@ -6013,7 +6000,7 @@ async function createActionModal(preSelectedActionId = null) {
         document.removeEventListener('click', closeSortDropdownOnClickOutside, true);
         document.removeEventListener('keydown', handleModalKeys); // Ensure this specific listener is removed
         if (isCancelledByUser) {
-            console.log("Action selection modal process is being explicitly cancelled by user flag.");
+            debugLog("Action selection modal process is being explicitly cancelled by user flag.");
         }
         highlightObservationsWithExistingValues([], null, true); 
         if (modal.parentNode === document.body) {
@@ -6036,7 +6023,7 @@ async function createActionModal(preSelectedActionId = null) {
                 event.preventDefault();
                 applyButtonElement.click();
             } else {
-                console.log("Enter pressed in action modal, but no action selected or apply button disabled.");
+                debugLog("Enter pressed in action modal, but no action selected or apply button disabled.");
                 // Optionally, add a visual cue like shaking the modal or focusing the select
             }
         } else if (event.key === 'Escape') {
@@ -6132,7 +6119,7 @@ async function createActionModal(preSelectedActionId = null) {
                 },
                 () => { 
                     highlightObservationsWithExistingValues([], null, true);
-                    console.log('Validation confirmation cancelled');
+                    debugLog('Validation confirmation cancelled');
                 }
             );
             document.body.appendChild(validationModal);
@@ -6167,7 +6154,7 @@ async function createActionModal(preSelectedActionId = null) {
  * @param {Object} buttonConfig - The button configuration for the action to apply
  */
 async function applyBulkActionFromShortcut(buttonConfig) {
-    console.log(`Bulk action shortcut triggered for: ${buttonConfig.name}`);
+    debugLog(`Bulk action shortcut triggered for: ${buttonConfig.name}`);
 
     // Check if observations are selected
     if (selectedObservations.size === 0) {
@@ -6186,7 +6173,7 @@ async function applyBulkActionFromShortcut(buttonConfig) {
         const modalNode = await createActionModal(buttonConfig.id);
 
         if (modalNode && document.body.contains(modalNode)) {
-            console.log(`Modal opened with pre-selected action: ${buttonConfig.name}`);
+            debugLog(`Modal opened with pre-selected action: ${buttonConfig.name}`);
         } else {
             console.error("Modal creation failed");
             window.isBulkActionSelectionModalOpen = false;
@@ -6397,10 +6384,10 @@ async function createValidationModal(validationResults, selectedAction, onConfir
                     const fieldName = validationResults.fieldNames.get(fieldId); // fieldId here is the key from info.existingFields
 
                     // --- NEW LOG ---
-                    console.log(`CREATE_VALIDATION_MODAL: Obs ${observationId}, Field ID ${fieldId} (${fieldName || 'Unknown Name'}), valueDetails.current:`, 
+                    debugLog(`CREATE_VALIDATION_MODAL: Obs ${observationId}, Field ID ${fieldId} (${fieldName || 'Unknown Name'}), valueDetails.current:`, 
                         valueDetails.current, 
                         `(Type: ${typeof valueDetails.current})`);
-                    console.log(`CREATE_VALIDATION_MODAL: Obs ${observationId}, Field ID ${fieldId} (${fieldName || 'Unknown Name'}), valueDetails.proposed:`,
+                    debugLog(`CREATE_VALIDATION_MODAL: Obs ${observationId}, Field ID ${fieldId} (${fieldName || 'Unknown Name'}), valueDetails.proposed:`,
                         valueDetails.proposed,
                         `(Type: ${typeof valueDetails.proposed})`);
                     // --- END NEW LOG ---
@@ -6450,7 +6437,7 @@ async function createValidationModal(validationResults, selectedAction, onConfir
     const handleEnterKey = (event) => {
         if (event.key === 'Enter') {
             if (confirmButton.disabled) {
-                console.log("Enter pressed, but Proceed button is disabled.");
+                debugLog("Enter pressed, but Proceed button is disabled.");
                 return;
             }
             event.preventDefault();
@@ -6627,7 +6614,7 @@ async function handleBulkActionShortcut(selectedAction) {
             () => {
                 // Clear highlights when cancelling
                 highlightObservationsWithExistingValues([], null, true);
-                console.log('Validation cancelled');
+                debugLog('Validation cancelled');
             }
         );
         
@@ -6716,7 +6703,7 @@ async function handleFollowAndReviewPrevention(observationId, actions, results) 
     const { preventTaxonFollow, preventFieldFollow, preventTaxonReview } = await new Promise(resolve => 
         browserAPI.storage.local.get(['preventTaxonFollow', 'preventFieldFollow', 'preventTaxonReview'], resolve)
     );
-    console.log('Prevention settings:', { preventTaxonFollow, preventFieldFollow, preventTaxonReview });
+    debugLog('Prevention settings:', { preventTaxonFollow, preventFieldFollow, preventTaxonReview });
 
     // Action type checks
     const hasTaxonAction = actions.some(action => action.type === 'addTaxonId');
@@ -6744,14 +6731,14 @@ async function handleFollowAndReviewPrevention(observationId, actions, results) 
         const followState = await makeAPIRequest(`/observations/${observationId}/subscriptions`);
         originalFollowState = followState.results && 
             followState.results.some(sub => sub.resource_type === "Observation");
-        console.log('Original follow state:', originalFollowState);
+        debugLog('Original follow state:', originalFollowState);
     }
 
     if (shouldPreventReview) {
         const observation = await makeAPIRequest(`/observations/${observationId}`);
         originalReviewState = observation.results[0].reviewed_by && 
             observation.results[0].reviewed_by.includes(await getCurrentUserId());
-        console.log('Original review state:', originalReviewState);
+        debugLog('Original review state:', originalReviewState);
     }
 
     // Store these original states for use after actions complete
@@ -6763,7 +6750,7 @@ async function handleFollowAndReviewPrevention(observationId, actions, results) 
 
 async function handleStateRestoration(observationId, actions, results, originalStates) {
     if (results.every(r => r.success)) {
-        console.log('Actions completed successfully, checking states...');
+        debugLog('Actions completed successfully, checking states...');
         await delay(500); // Wait for iNat's auto-actions to take effect
 
         const { originalFollowState, originalReviewState } = originalStates;
@@ -6773,10 +6760,10 @@ async function handleStateRestoration(observationId, actions, results, originalS
             const currentState = await makeAPIRequest(`/observations/${observationId}/subscriptions`);
             const isCurrentlyFollowed = currentState.results && 
                 currentState.results.some(sub => sub.resource_type === "Observation");
-            console.log('Current follow state:', isCurrentlyFollowed);
+            debugLog('Current follow state:', isCurrentlyFollowed);
 
             if (!originalFollowState && isCurrentlyFollowed) {
-                console.log('Attempting to restore unfollowed state...');
+                debugLog('Attempting to restore unfollowed state...');
                 await makeAPIRequest(`/subscriptions/Observation/${observationId}/subscribe`, {
                     method: 'POST'
                 });
@@ -6818,7 +6805,7 @@ function sortAvailableActions(actions, sortMethod) {
 }
 
 async function openActionSelectionModalWorkflow() {
-    console.log('Bulk Action: Initiating action selection modal workflow...');
+    debugLog('Bulk Action: Initiating action selection modal workflow...');
     if (selectedObservations.size === 0) {
         alert('Please select at least one observation first.');
         return;
@@ -6834,7 +6821,7 @@ async function openActionSelectionModalWorkflow() {
             console.error("openActionSelectionModalWorkflow: createActionModal did not successfully create or append the modal to the document.");
             window.isBulkActionSelectionModalOpen = false; // Ensure flag is reset
         } else {
-            console.log("Action selection modal opened successfully.");
+            debugLog("Action selection modal opened successfully.");
         }
     } catch (error) {
         console.error("Error opening or during creation of the action selection modal:", error);
@@ -6845,7 +6832,7 @@ async function openActionSelectionModalWorkflow() {
 
 
 async function applyBulkAction() { // Make it async
-    console.log('Button "Select and Apply Action" clicked. Initiating modal workflow.');
+    debugLog('Button "Select and Apply Action" clicked. Initiating modal workflow.');
 
     // --- NEW: Check if a modal is already open ---
     if (window.isBulkActionSelectionModalOpen === true) {
@@ -6872,7 +6859,7 @@ async function applyBulkAction() { // Make it async
         const modalNode = await createActionModal(); 
         
         if (modalNode && document.body.contains(modalNode)) {
-            console.log("Action selection modal has been successfully opened by createActionModal.");
+            debugLog("Action selection modal has been successfully opened by createActionModal.");
         } else {
              console.error("applyBulkAction (initiator): createActionModal resolved, but modalNode is not valid or not in DOM. Flag was:", window.isBulkActionSelectionModalOpen);
              // If modal creation failed internally and didn't set the flag to false, reset it here.

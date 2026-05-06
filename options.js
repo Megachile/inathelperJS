@@ -327,7 +327,7 @@ async function setStorageWithQuotaCheck(dataToSet, keyBeingPrimarilyModified = n
 
     if (IS_TESTING_QUOTA && quotaToUse < 50 * 1024) { 
          safetyMargin = 0.01 * quotaToUse; // Even smaller margin for tiny test quotas, like 1%
-         console.log(`Using very small safety margin for test: ${formatBytes(safetyMargin)}`);
+         debugLog(`Using very small safety margin for test: ${formatBytes(safetyMargin)}`);
     }
     
     const currentStorageState = await new Promise(resolve => browserAPI.storage.local.get(null, data => resolve(data || {})));
@@ -343,12 +343,12 @@ async function setStorageWithQuotaCheck(dataToSet, keyBeingPrimarilyModified = n
     const estimatedTotalSizeAfterSave = new TextEncoder().encode(JSON.stringify(nextFullStorageState)).length;
     // const estimatedTotalSizeAfterSave = JSON.stringify(nextFullStorageState).length; // Original estimate
 
-    console.log(`Check: Est. Size (bytes) ${formatBytes(estimatedTotalSizeAfterSave)}, Limit (incl. margin) ${formatBytes(quotaToUse - safetyMargin)}, Test Quota (raw) ${formatBytes(quotaToUse)}`);
+    debugLog(`Check: Est. Size (bytes) ${formatBytes(estimatedTotalSizeAfterSave)}, Limit (incl. margin) ${formatBytes(quotaToUse - safetyMargin)}, Test Quota (raw) ${formatBytes(quotaToUse)}`);
 
     if (estimatedTotalSizeAfterSave > quotaToUse - safetyMargin) {
         // --- NEW DETAILED LOGS INSIDE THE IF BLOCK ---
-        console.log(">>> QUOTA EXCEEDED CONDITION MET (TEST) <<<");
-        console.log(`>>> Estimated: ${formatBytes(estimatedTotalSizeAfterSave)}, Limit: ${formatBytes(quotaToUse - safetyMargin)}`);
+        debugLog(">>> QUOTA EXCEEDED CONDITION MET (TEST) <<<");
+        debugLog(`>>> Estimated: ${formatBytes(estimatedTotalSizeAfterSave)}, Limit: ${formatBytes(quotaToUse - safetyMargin)}`);
         // --- END NEW LOGS ---
     
         const limitFormatted = formatBytes(quotaToUse); 
@@ -372,13 +372,13 @@ async function setStorageWithQuotaCheck(dataToSet, keyBeingPrimarilyModified = n
         }
         
         // --- NEW LOG BEFORE ALERT ---
-        console.log(">>> Preparing to show alert (TEST):", alertMessage);
+        debugLog(">>> Preparing to show alert (TEST):", alertMessage);
         // --- END NEW LOG ---
         
         alert(alertMessage); // THIS IS THE ALERT THAT SHOULD APPEAR
         
         // --- NEW LOG AFTER ALERT ---
-        console.log(">>> Alert shown (TEST). Preparing to throw error.");
+        debugLog(">>> Alert shown (TEST). Preparing to throw error.");
         // --- END NEW LOG ---
     
         console.warn(`Pre-save quota check ${IS_TESTING_QUOTA ? "(TEST)" : ""}: Estimated total size after save ${formatBytes(estimatedTotalSizeAfterSave)} EXCEEDS test quota ${formatBytes(quotaToUse)}. Save aborted.`);
@@ -392,7 +392,7 @@ async function setStorageWithQuotaCheck(dataToSet, keyBeingPrimarilyModified = n
             if (browserAPI.runtime.lastError) {
                 // ... error handling ...
             } else {
-                console.log(`Data saved successfully via setStorageWithQuotaCheck (IS_TESTING_QUOTA: ${IS_TESTING_QUOTA})`);
+                debugLog(`Data saved successfully via setStorageWithQuotaCheck (IS_TESTING_QUOTA: ${IS_TESTING_QUOTA})`);
                 updateStorageUsageDisplay(); 
                 resolve();
             }
@@ -811,7 +811,7 @@ function editConfiguration(configId) {
 }
 
 function populateActionInputs(actionDiv, action) {
-    console.log('Populating action inputs for:', action.type);
+    debugLog('Populating action inputs for:', action.type);
     const actionType = actionDiv.querySelector('.actionType');
     actionType.value = action.type;
     actionType.dispatchEvent(new Event('change'));
@@ -882,10 +882,10 @@ function populateActionInputs(actionDiv, action) {
         case 'addToList':
             const listSelect = actionDiv.querySelector('.listSelect');
             if (listSelect) {
-                console.log('Refreshing list select for existing Add to List action');
+                debugLog('Refreshing list select for existing Add to List action');
                 refreshListSelect(listSelect);
                 setTimeout(() => {
-                    console.log('Setting list select value to:', action.listId);
+                    debugLog('Setting list select value to:', action.listId);
                     listSelect.value = action.listId || '';
                 }, 100);
             }
@@ -1065,7 +1065,7 @@ function addActionToForm(action = null) {
         reviewedOptions.style.display = actionType.value === 'reviewed' ? 'block' : 'none';
     
         if (actionType.value === 'addToList') {
-            console.log('Add to List selected, refreshing list select');
+            debugLog('Add to List selected, refreshing list select');
             refreshListSelect(listSelect);
             
             // Clear only the list select element, not the entire div
@@ -1165,10 +1165,10 @@ function addActionToForm(action = null) {
 }
 
 function refreshListSelect(selectElement) {
-    console.log('Refreshing list select');
+    debugLog('Refreshing list select');
     browserAPI.storage.local.get('customLists', function(data) {
         const customLists = data.customLists || [];
-        console.log('Custom lists:', customLists);
+        debugLog('Custom lists:', customLists);
         selectElement.innerHTML = '<option value="">Select a List</option>';
         customLists.forEach(list => {
             const option = document.createElement('option');
@@ -1176,7 +1176,7 @@ function refreshListSelect(selectElement) {
             option.textContent = list.name;
             selectElement.appendChild(option);
         });
-        console.log('List select refreshed with options:', selectElement.innerHTML);
+        debugLog('List select refreshed with options:', selectElement.innerHTML);
     });
 }
 
@@ -1267,7 +1267,7 @@ async function displayConfigurations() {
     }
 
     if (!currentSet.buttons || currentSet.buttons.length === 0) {
-        // console.log('No buttons in the current set to display.');
+        // debugLog('No buttons in the current set to display.');
         // Optionally display a message
         // container.textContent = 'This configuration set is empty.';
         // return; // Keep this commented if you want an empty filterable list
@@ -1564,7 +1564,7 @@ async function deleteConfiguration(configId) {
 
         try {
             await saveConfigurationSets(false); // Call with refreshDisplay = false, as we'll update UI here or rely on displayConfigurations
-            console.log('Configuration deleted successfully.');
+            debugLog('Configuration deleted successfully.');
             // UI update: remove the element or re-render
             // If saveConfigurationSets is set to refreshDisplay=true by default, this might be redundant
             // but explicit removal here can be faster if saveConfigurationSets doesn't refresh.
@@ -1630,7 +1630,7 @@ function handleStorageChangeForOptionsPage(changes, areaName) { // Was handleSto
         let needsFullDisplayRefresh = false; // Renamed from needsDisplayRefresh for clarity
 
         if (changes.configurationSets) {
-            console.log("options.js (storage.onChanged): configurationSets changed.");
+            debugLog("options.js (storage.onChanged): configurationSets changed.");
             configurationSets = changes.configurationSets.newValue || configurationSets;
             needsFullDisplayRefresh = true;
         }
@@ -1638,26 +1638,26 @@ function handleStorageChangeForOptionsPage(changes, areaName) { // Was handleSto
         if (changes.currentOptionsPageSetName) {
             const newOptPageSet = changes.currentOptionsPageSetName.newValue; // Renamed from newOptSet
             if (newOptPageSet && newOptPageSet !== optionsPageActiveSetName) {
-                console.log("options.js (storage.onChanged): currentOptionsPageSetName changed by another options instance.");
+                debugLog("options.js (storage.onChanged): currentOptionsPageSetName changed by another options instance.");
                 optionsPageActiveSetName = newOptPageSet;
                 needsFullDisplayRefresh = true;
             }
         }
 
         if (changes.customLists) {
-            console.log("options.js (storage.onChanged): customLists changed.");
+            debugLog("options.js (storage.onChanged): customLists changed.");
             // Assuming displayLists and updateAllListSelects are defined and handle this
             displayLists();
             updateAllListSelects();
         }
         if (changes.observationFieldMap) {
-             console.log("options.js (storage.onChanged): observationFieldMap changed.");
+             debugLog("options.js (storage.onChanged): observationFieldMap changed.");
              observationFieldMap = changes.observationFieldMap.newValue || {};
              populateFieldDatalist();
         }
 
         if (needsFullDisplayRefresh) {
-            console.log("options.js (storage.onChanged): Refreshing display due to storage changes.");
+            debugLog("options.js (storage.onChanged): Refreshing display due to storage changes.");
             updateSetSelector();
             displayConfigurations();
             updateSetManagementButtons();
@@ -1680,7 +1680,7 @@ function handleStorageChangeForOptionsPage(changes, areaName) { // Was handleSto
 
 function showUndoRecordsModal() {
     getUndoRecords(function(undoRecords) {
-        console.log('Retrieved undo records:', undoRecords);
+        debugLog('Retrieved undo records:', undoRecords);
         if (undoRecords.length === 0) {
             alert('No undo records available.');
             return;
@@ -1750,7 +1750,7 @@ async function importConfigurations(event) {
                 } else if (error.message.toLowerCase().includes("quota check failed")) {
                     console.warn('Configuration set import aborted due to storage quota issue (already alerted).');
                 } else {
-                    console.log('Configuration set import cancelled by user.');
+                    debugLog('Configuration set import cancelled by user.');
                 }
             }
         } else if (importedData.customButtons) {
@@ -1771,7 +1771,7 @@ async function importConfigurations(event) {
                     // Quota error is already alerted by setStorageWithQuotaCheck
                 }
             } else {
-                console.log("Import of old-format set cancelled by user (no name provided).");
+                debugLog("Import of old-format set cancelled by user (no name provided).");
                 setsImportShouldProceed = false; // If user cancels naming, don't proceed with lists from this import
             }
         }
@@ -1794,7 +1794,7 @@ async function importConfigurations(event) {
                 } else if (error.message.toLowerCase().includes("quota check failed")) {
                     console.warn('List import aborted due to storage quota issue (already alerted).');
                 } else {
-                    console.log('List import cancelled by user.');
+                    debugLog('List import cancelled by user.');
                 }
             }
         }
@@ -1842,7 +1842,7 @@ function mergeConfigurationSets(importedSetsToProcess) {
 function loadUndoRecords() {
     const container = document.getElementById('undoRecordsContainer');
     if (!container) {
-        console.log('Undo records container not found. This is expected if the modal is not open.');
+        debugLog('Undo records container not found. This is expected if the modal is not open.');
         return;
     }
 
@@ -1887,7 +1887,7 @@ function loadUndoRecords() {
 async function createList() {
     const listNameInput = document.getElementById('newListName');
     const listName = listNameInput.value.trim();
-    console.log("Create List called. List name: '", listName, "'");
+    debugLog("Create List called. List name: '", listName, "'");
 
     if (listName) {
         try {
@@ -1911,7 +1911,7 @@ async function createList() {
             displayLists();
             updateAllListSelects();
             listNameInput.value = ''; // Clear the input field after successful creation
-            console.log("List created successfully:", newList.name);
+            debugLog("List created successfully:", newList.name);
         } catch (error) {
             console.error("Error creating list:", error.message);
             // Quota error is handled by setStorageWithQuotaCheck's alert
@@ -1921,7 +1921,7 @@ async function createList() {
         }
     } else {
         // User tried to create a list with an empty name
-        console.log("Attempted to create list with empty name.");
+        debugLog("Attempted to create list with empty name.");
         alert("Please enter a name for the new list.");
         listNameInput.focus(); // Optionally focus the input field
     }
@@ -2163,7 +2163,7 @@ async function saveConfigurationSets(refreshDisplay = true) {
 
     try {
         await setStorageWithQuotaCheck(dataToSave, 'configurationSets');
-        console.log('Configuration sets and relevant active set names updated.');
+        debugLog('Configuration sets and relevant active set names updated.');
 
         if (refreshDisplay) {
             // optionsPageActiveSetName is already set for the current UI
@@ -2257,7 +2257,7 @@ async function processListImportChoices(results, existingLists) {
             if (messageParts.length > 0 || skippedListsCount > 0) {
                 alert(alertMessage);
             } else {
-                console.log("List import: No new, merged, or skipped lists to report, but save was successful.");
+                debugLog("List import: No new, merged, or skipped lists to report, but save was successful.");
             }
 
         } catch (error) {
@@ -2272,7 +2272,7 @@ async function processListImportChoices(results, existingLists) {
     } else if (skippedListsCount > 0 && results.length === skippedListsCount) {
          alert("List import: All lists were skipped based on user choice. No changes made.");
     } else if (results.length === 0) {
-        console.log("List import: No lists were provided for import.");
+        debugLog("List import: No lists were provided for import.");
     }
 }
 
@@ -2383,7 +2383,7 @@ function performConfigurationAction(action) {
                 }
             })();
         } else {
-            console.log("No configurations found for deletion in the current selection.");
+            debugLog("No configurations found for deletion in the current selection.");
             clearSelection();
         }
         return; // Exit after delete action
@@ -2445,7 +2445,7 @@ function performConfigurationAction(action) {
                 loadOptionsPageData(); // Revert UI to last known good state from storage
             });
     } else {
-        console.log(`Bulk action '${action}' resulted in no changes to selected configurations.`);
+        debugLog(`Bulk action '${action}' resulted in no changes to selected configurations.`);
     }
     // Do NOT call clearSelection() here for hide/show/enable/disable, user might want to perform more actions on same selection.
     // The individual item states (checkboxes, class) are updated directly.
@@ -2675,7 +2675,7 @@ async function processImportChoices(results) { // For Configuration Sets
             if (messageParts.length > 0 || skippedSetsCount > 0) {
                 alert(alertMessage);
             } else {
-                console.log("Configuration set import: No new, merged, or skipped sets to report, but save was successful (e.g., empty import file processed).");
+                debugLog("Configuration set import: No new, merged, or skipped sets to report, but save was successful (e.g., empty import file processed).");
             }
 
         } catch (error) {
@@ -2690,7 +2690,7 @@ async function processImportChoices(results) { // For Configuration Sets
     } else if (skippedSetsCount > 0 && results.length === skippedSetsCount) {
         alert("Configuration set import: All sets were skipped based on user choice. No changes saved.");
     } else if (results.length === 0) {
-        console.log("Configuration set import: No sets were provided for import.");
+        debugLog("Configuration set import: No sets were provided for import.");
     }
 }
 

@@ -392,7 +392,7 @@ function addField(type) {
         `;
     }
 
-    console.log(`Adding field of type: ${type}`);
+    debugLog(`Adding field of type: ${type}`);
     actionBox.appendChild(fieldGroup);
     container.appendChild(actionBox);
 
@@ -428,7 +428,7 @@ function addField(type) {
     // Add this directly instead of the recursive redefinition
     setupActionBoxToggle(actionBox);  // Note: actionBox, not lastActionBox
 
-    console.log(`Field added: `, fieldGroup);
+    debugLog(`Field added: `, fieldGroup);
     saveInputs();
 }
 
@@ -443,7 +443,7 @@ function setupAutocomplete(type, index) {
         return;
     }
 
-    console.log(`Setting up autocomplete for type ${type} with index ${index}`);
+    debugLog(`Setting up autocomplete for type ${type} with index ${index}`);
 
     if (type === 'taxon') {
         setupTaxonAutocomplete(input, idInput);
@@ -451,15 +451,15 @@ function setupAutocomplete(type, index) {
         setupAutocompleteDropdown(input, window[`lookup${type.charAt(0).toUpperCase() + type.slice(1)}`], (result) => {
             idInput.value = result.id;
             input.value = result.name || result.title || result.login;
-            console.log(`Autocomplete selection for ${type}:`, { value: input.value, id: idInput.value });
-            console.log(`ID input (${type}Id${index}) value set to:`, idInput.value);
+            debugLog(`Autocomplete selection for ${type}:`, { value: input.value, id: idInput.value });
+            debugLog(`ID input (${type}Id${index}) value set to:`, idInput.value);
         });
     }
 
     input.addEventListener('input', () => {
         if (input.value === '') {
             idInput.value = '';
-            console.log(`Cleared ID for ${type}${index}`);
+            debugLog(`Cleared ID for ${type}${index}`);
             clearFieldFromUrl(input.id);
         } else {
             generateURL();
@@ -615,7 +615,7 @@ function processInputs(type) {
 }
 
 async function generateURL() {
-    console.log('Generating URL...');
+    debugLog('Generating URL...');
     let url = 'https://www.inaturalist.org/observations/identify?';
     let params = [];
 
@@ -636,7 +636,7 @@ async function generateURL() {
     const reviewedStatus = document.querySelector('input[name="reviewed"]:checked');
     if (reviewedStatus) {
         params.push(`reviewed=${encodeURIComponent(reviewedStatus.value)}`);
-        console.log('Added reviewed status:', params[params.length - 1]);
+        debugLog('Added reviewed status:', params[params.length - 1]);
     }
 
     // Handle toggles
@@ -669,7 +669,7 @@ async function generateURL() {
                 default:
                     params.push(`${type}_id=${encodeURIComponent(ids.join(','))}`);
             }
-            console.log(`Added ${type} ids:`, params[params.length - 1]);
+            debugLog(`Added ${type} ids:`, params[params.length - 1]);
         }
         if (withoutIds.length > 0) {
             let withoutParam;
@@ -694,26 +694,26 @@ async function generateURL() {
                     break;
             }
             params.push(`${withoutParam}=${encodeURIComponent(withoutIds.join(','))}`);
-            console.log(`Added ${type} without ids:`, params[params.length - 1]);
+            debugLog(`Added ${type} without ids:`, params[params.length - 1]);
         }
         if (type === 'taxon') {
             if (exactIds.length > 0) {
                 params.push(`exact_taxon_id=${encodeURIComponent(exactIds.join(','))}`);
-                console.log(`Added exact taxon ids:`, params[params.length - 1]);
+                debugLog(`Added exact taxon ids:`, params[params.length - 1]);
             }
             if (withoutDirectIds.length > 0) {
                 params.push(`without_direct_taxon_id=${encodeURIComponent(withoutDirectIds.join(','))}`);
-                console.log(`Added without direct taxon ids:`, params[params.length - 1]);
+                debugLog(`Added without direct taxon ids:`, params[params.length - 1]);
             }
         }
         if (type === 'project') {
             if (applyRulesIds.length > 0) {
                 params.push(`apply_project_rules_for=${encodeURIComponent(applyRulesIds.join(','))}`);
-                console.log(`Added apply project rules ids:`, params[params.length - 1]);
+                debugLog(`Added apply project rules ids:`, params[params.length - 1]);
             }
             if (notMatchingRulesIds.length > 0) {
                 params.push(`not_matching_project_rules_for=${encodeURIComponent(notMatchingRulesIds.join(','))}`);
-                console.log(`Added not matching project rules ids:`, params[params.length - 1]);
+                debugLog(`Added not matching project rules ids:`, params[params.length - 1]);
             }
         }
     });
@@ -920,10 +920,10 @@ async function generateURL() {
   }
     
   const rawUrl = url + params.join('&');
-  console.log('Raw generated URL:', rawUrl);
+  debugLog('Raw generated URL:', rawUrl);
 
     const queryString = params.join('&');
-    console.log('Generated query string:', queryString);
+    debugLog('Generated query string:', queryString);
 
     // Update the plain text URL output
     const plainUrlText = document.getElementById('plainUrlText');
@@ -1009,7 +1009,7 @@ function setupToggleListeners() {
 }
 
 function setupMap() {
-      console.log("Setting up map...");
+      debugLog("Setting up map...");
       
       if (typeof L === 'undefined') {
           console.error('Leaflet is not loaded');
@@ -1024,18 +1024,18 @@ function setupMap() {
   
       // Check if map is already initialized
       if (map) {
-          console.log("Map already initialized. Skipping setup.");
+          debugLog("Map already initialized. Skipping setup.");
           return;
       }
   
-      console.log("Initializing map...");
+      debugLog("Initializing map...");
       map = L.map('mapContainer', {
           center: [0, 0],
           zoom: 2,
           zoomControl: false
       });
   
-      console.log("Adding tile layer...");
+      debugLog("Adding tile layer...");
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
           attribution: '© OpenStreetMap contributors'
       }).addTo(map);
@@ -1140,22 +1140,22 @@ function setupMap() {
   
       // Add logging for debugging
       map.on('load', () => {
-          console.log("Map load event fired");
+          debugLog("Map load event fired");
       });
   
       map.on('tileloadstart', () => {
-          console.log("Tile load started");
+          debugLog("Tile load started");
       });
   
       map.on('tileload', () => {
-          console.log("Tile loaded");
+          debugLog("Tile loaded");
       });
   
       map.on('tileerror', (error) => {
           console.error("Tile error:", error);
       });
   
-      console.log("Map setup complete.");
+      debugLog("Map setup complete.");
       
       // Force initial map update
       setTimeout(refreshMap, 100);
@@ -1166,7 +1166,7 @@ function setupMap() {
   
   function refreshMap() {
       if (map) {
-          console.log("Refreshing map...");
+          debugLog("Refreshing map...");
           map.invalidateSize();
           map.fitWorld();  // This will ensure the map fills the container
       } else {
@@ -1759,7 +1759,7 @@ function verifyNameIdConsistency() {
             // If one exists without the other, clear both
             if (nameInput && idInput) {
                 if ((!nameInput.value && idInput.value) || (nameInput.value && !idInput.value)) {
-                    console.log(`Clearing mismatched ${actionType} field`);
+                    debugLog(`Clearing mismatched ${actionType} field`);
                     nameInput.value = '';
                     idInput.value = '';
                 }

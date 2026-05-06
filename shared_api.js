@@ -1,5 +1,23 @@
 const browserAPI = typeof browser !== 'undefined' ? browser : chrome;
 
+// Debug logging — gated behind debugMode so production console stays quiet.
+// Defined here in shared_api.js so all four load contexts (content_scripts,
+// options.html, URLgen.html, and any future page) share one flag and helper.
+// Use console['log'] (bracket notation) to avoid being caught by future
+// console.log → debugLog refactor passes.
+let debugMode = false;
+function debugLog(...args) {
+    if (debugMode) {
+        console['log'](...args);
+    }
+}
+function enableDebugMode() {
+    debugMode = true;
+}
+function disableDebugMode() {
+    debugMode = false;
+}
+
 function safeErrorString(error) {
     if (!error) return 'Unknown error';
     if (typeof error === 'string') return error;
@@ -263,7 +281,7 @@ function debounce(func, wait) {
 
 
 function setupFieldAutocomplete(nameInput, idInput, fieldValueContainer, fieldDescriptionElement) {
-    console.log('Setting up field autocomplete with:', {
+    debugLog('Setting up field autocomplete with:', {
         nameInput,
         idInput,
         fieldValueContainer,
@@ -271,7 +289,7 @@ function setupFieldAutocomplete(nameInput, idInput, fieldValueContainer, fieldDe
     });
 
     setupAutocompleteDropdown(nameInput, lookupObservationField, (result) => {
-        console.log('Field selected in autocomplete:', result);
+        debugLog('Field selected in autocomplete:', result);
         idInput.value = result.id;  // Changed from fieldIdInput to idInput
         if (fieldDescriptionElement) {
             fieldDescriptionElement.textContent = result.description || '';
@@ -281,7 +299,7 @@ function setupFieldAutocomplete(nameInput, idInput, fieldValueContainer, fieldDe
 }
 
 function setupTaxonAutocomplete(inputElement, idElement) {
-    console.log('Setting up taxon autocomplete for:', inputElement);
+    debugLog('Setting up taxon autocomplete for:', inputElement);
     
     const suggestionContainer = document.createElement('div');
     suggestionContainer.className = 'taxonSuggestions';
@@ -292,19 +310,19 @@ function setupTaxonAutocomplete(inputElement, idElement) {
     let debounceTimeout;
 
     function showTaxonSuggestions() {
-        console.log('showTaxonSuggestions called for:', inputElement.value);
+        debugLog('showTaxonSuggestions called for:', inputElement.value);
         clearTimeout(debounceTimeout);
         debounceTimeout = setTimeout(() => {
             if (inputElement.value.length < 2) {
-                console.log('Input too short, hiding suggestions');
+                debugLog('Input too short, hiding suggestions');
                 suggestionContainer.innerHTML = '';
                 suggestionContainer.style.display = 'none';
                 return;
             }
-            console.log('Fetching taxon suggestions for:', inputElement.value);
+            debugLog('Fetching taxon suggestions for:', inputElement.value);
             lookupTaxon(inputElement.value)
                 .then(taxa => {
-                    console.log('Received taxa suggestions:', taxa);
+                    debugLog('Received taxa suggestions:', taxa);
                     suggestionContainer.innerHTML = '';
                     taxa.forEach(taxon => {
                         const suggestion = document.createElement('div');
@@ -325,7 +343,7 @@ function setupTaxonAutocomplete(inputElement, idElement) {
                                 const selectedName = taxon.preferred_common_name ? 
                                     `${taxon.preferred_common_name} (${taxon.name})` : 
                                     taxon.name;
-                                console.log('Taxon selected:', {
+                                debugLog('Taxon selected:', {
                                     name: selectedName,
                                     id: taxon.id,
                                     inputElement: inputElement,
@@ -337,7 +355,7 @@ function setupTaxonAutocomplete(inputElement, idElement) {
                                 if (idElement) idElement.value = taxon.id;
                                 suggestionContainer.innerHTML = '';
                                 suggestionContainer.style.display = 'none';
-                                console.log('Taxon selected:', taxon.name, 'ID:', taxon.id);
+                                debugLog('Taxon selected:', taxon.name, 'ID:', taxon.id);
                             }
                         });
                         suggestionContainer.appendChild(suggestion);
@@ -348,7 +366,7 @@ function setupTaxonAutocomplete(inputElement, idElement) {
                     suggestionContainer.style.left = `${inputRect.left + window.scrollX}px`;
                     suggestionContainer.style.width = `${inputRect.width}px`;
                     suggestionContainer.style.display = 'block';
-                    console.log('Showing taxon suggestions');
+                    debugLog('Showing taxon suggestions');
                 })
                 .catch(error => console.error('Error fetching taxa:', error));
         }, 300);
@@ -358,18 +376,18 @@ function setupTaxonAutocomplete(inputElement, idElement) {
     inputElement.addEventListener('focus', showTaxonSuggestions);
     inputElement.addEventListener('blur', () => {
         setTimeout(() => {
-            console.log('Hiding taxon suggestions on blur');
+            debugLog('Hiding taxon suggestions on blur');
             suggestionContainer.innerHTML = '';
             suggestionContainer.style.display = 'none';
         }, 200);
     });
 
-    console.log('Taxon autocomplete setup complete for:', inputElement);
+    debugLog('Taxon autocomplete setup complete for:', inputElement);
 }
 
 
 function updateFieldValueInput(field, container, existingValue = null) {
-    console.log('Updating field value input for:', {
+    debugLog('Updating field value input for:', {
         field,
         container,
         existingValue
@@ -377,10 +395,10 @@ function updateFieldValueInput(field, container, existingValue = null) {
     
     // Always clear the container
     container.innerHTML = '';
-    console.log('Container after clearing:', container.innerHTML);
+    debugLog('Container after clearing:', container.innerHTML);
     
     let input;
-    console.log('Creating input for field type:', field.datatype);
+    debugLog('Creating input for field type:', field.datatype);
 
     switch (field.datatype) {
         case 'text':
@@ -408,9 +426,9 @@ function updateFieldValueInput(field, container, existingValue = null) {
             input.type = 'text';
             input.className = 'taxonInput';
             input.placeholder = 'Enter Taxon Name (or ID)';
-            console.log('Setting up taxon autocomplete for field:', field);
+            debugLog('Setting up taxon autocomplete for field:', field);
             setupTaxonAutocomplete(input, null); 
-            console.log('Created taxon input:', input);
+            debugLog('Created taxon input:', input);
             break;
         default:
             input = document.createElement('input');
@@ -424,13 +442,13 @@ function updateFieldValueInput(field, container, existingValue = null) {
         input.value = existingValue;
     }    
 
-    console.log('Created input:', input);
+    debugLog('Created input:', input);
     container.appendChild(input);
-    console.log('Final container state:', container.innerHTML);
+    debugLog('Final container state:', container.innerHTML);
 
     // Handle allowed values
     if (field.allowed_values && field.datatype !== 'taxon') {
-        console.log('Setting up allowed values for non-taxon field');
+        debugLog('Setting up allowed values for non-taxon field');
         const allowedValues = field.allowed_values.split('|');
         if (allowedValues.length > 0) {
             const datalist = document.createElement('datalist');
@@ -445,7 +463,7 @@ function updateFieldValueInput(field, container, existingValue = null) {
         }
     }
 
-    console.log('Field value input updated');
+    debugLog('Field value input updated');
     return input;
 }
 
@@ -477,7 +495,7 @@ function removeUndoRecord(id, callback) {
         let undoRecords = result.undoRecords || [];
         undoRecords = undoRecords.filter(record => record.id !== id);
         browserAPI.storage.local.set({undoRecords: undoRecords}, function() {
-            console.log('Undo record removed');
+            debugLog('Undo record removed');
             callback();
         });
     });
@@ -622,7 +640,7 @@ function createUndoRecordsModal(undoRecords, onUndoClick) {
                             undoButton.textContent = 'Undone';
                             undoButton.disabled = true;
                             recordDiv.style.textDecoration = 'line-through';
-                            console.log('All undo actions completed successfully:', result.results);
+                            debugLog('All undo actions completed successfully:', result.results);
                         } else {
                             console.error('Some undo actions failed:', result.results);
                             alert('Some undo actions failed. Please check the console for details.');
@@ -660,13 +678,13 @@ function getUndoRecords(callback) {
         const records = result.undoRecords || [];
         // Sort records by timestamp, newest first
         records.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-        console.log('Sorted undo records:', records);
+        debugLog('Sorted undo records:', records);
         callback(records);
     });
 }
 
 async function performUndoActions(undoRecord, progressFill) {
-    console.log('Performing undo actions for record:', JSON.stringify(undoRecord, null, 2));
+    debugLog('Performing undo actions for record:', JSON.stringify(undoRecord, null, 2));
     let allActionsSuccessful = true;
     const results = [];
 
@@ -674,11 +692,11 @@ async function performUndoActions(undoRecord, progressFill) {
     let completedActions = 0;
 
     for (const [observationId, observationData] of Object.entries(undoRecord.observations)) {
-        console.log(`Processing undo actions for observation ${observationId}:`, observationData);
+        debugLog(`Processing undo actions for observation ${observationId}:`, observationData);
         for (const undoAction of observationData.undoActions) { 
             try {
                 const result = await performSingleUndoAction(observationId, undoAction);
-                console.log('Undo action result:', result);
+                debugLog('Undo action result:', result);
                 if (result.success) {
                     results.push({ observationId, action: result.action, message: result.message });
                 } else {
@@ -707,22 +725,22 @@ function markRecordAsUndone(recordId) {
         if (recordIndex !== -1) {
             undoRecords[recordIndex].undone = true;
             browserAPI.storage.local.set({undoRecords: undoRecords}, function() {
-                console.log('Undo record marked as undone');
+                debugLog('Undo record marked as undone');
             });
         }
     });
 }
 
 async function performSingleUndoAction(observationId, undoAction) {
-    console.log('Performing undo action:', undoAction, 'for observation:', observationId);
+    debugLog('Performing undo action:', undoAction, 'for observation:', observationId);
     switch (undoAction.type) {
             case 'follow':
                 if (undoAction.alreadyInDesiredState) {
-                    console.log('No follow toggle needed for undo; already in desired state.');
+                    debugLog('No follow toggle needed for undo; already in desired state.');
                     return { success: true, message: 'No action needed for follow undo' };
                 }
             
-                console.log('Restoring original follow state:', undoAction.originalState);
+                debugLog('Restoring original follow state:', undoAction.originalState);
                 try {
                     const result = await toggleFollowObservation(observationId, undoAction.originalState === 'followed');
                     return {
@@ -735,13 +753,13 @@ async function performSingleUndoAction(observationId, undoAction) {
                     return { success: false, error: safeErrorString(error) };
                 }
             case 'reviewed':
-                console.log('Undo action for review:', {
+                debugLog('Undo action for review:', {
                     undoAction,
                     originalState: undoAction.originalState,
                     observationId
                 });
                 const shouldMarkAsReviewed = undoAction.originalState === 'reviewed';
-                console.log('Should mark as reviewed?', {
+                debugLog('Should mark as reviewed?', {
                     shouldMarkAsReviewed,
                     originalState: undoAction.originalState,
                     comparison: undoAction.originalState === 'reviewed'
@@ -760,12 +778,12 @@ async function performSingleUndoAction(observationId, undoAction) {
                 if (undoAction.uuid) {
                     try {
                         const response = await makeAPIRequest(`/annotations/${undoAction.uuid}`, { method: 'DELETE' });
-                        console.log('Annotation deletion response:', response);
+                        debugLog('Annotation deletion response:', response);
                         return { success: true, action: 'removeAnnotation', message: 'Annotation removed successfully' };
                     } catch (error) {
                         console.error('Error removing annotation:', error);
                         if (error.message && error.message.includes('HTTP error! status: 404')) {
-                            console.log('Annotation not found (404). It may have been already deleted.');
+                            debugLog('Annotation not found (404). It may have been already deleted.');
                             return { success: true, action: 'removeAnnotation', message: 'Annotation already removed or not found' };
                         }
                         return { success: false, error: safeErrorString(error) };
@@ -777,18 +795,18 @@ async function performSingleUndoAction(observationId, undoAction) {
             case 'updateObservationField':
                 // First, get the current state of the observation
                 const observationResponse = await makeAPIRequest(`/observations/${observationId}`);
-                console.log('Current observation state:', observationResponse.results[0]);
+                debugLog('Current observation state:', observationResponse.results[0]);
                 
                 const ofv = observationResponse.results[0].ofvs.find(ofv => ofv.field_id === parseInt(undoAction.fieldId));
                 
                 if (ofv) {
-                    console.log('Found existing OFV:', ofv);
+                    debugLog('Found existing OFV:', ofv);
                     
                     // Delete the current value
                     const deleteResult = await makeAPIRequest(`/observation_field_values/${ofv.id}`, {
                         method: 'DELETE'
                     });
-                    console.log('Delete result:', deleteResult);
+                    debugLog('Delete result:', deleteResult);
                     
                     // Verify the deletion
                     const checkResponse = await makeAPIRequest(`/observations/${observationId}`);
@@ -797,7 +815,7 @@ async function performSingleUndoAction(observationId, undoAction) {
                     if (!checkOfv) {
                         // Deletion successful, now restore original value if it exists
                         if (undoAction.originalValue !== undefined && undoAction.originalValue !== null) {
-                            console.log('Restoring original value:', undoAction.originalValue);
+                            debugLog('Restoring original value:', undoAction.originalValue);
                             const restoreResult = await makeAPIRequest('/observation_field_values', {
                                 method: 'POST',
                                 body: JSON.stringify({
@@ -817,7 +835,7 @@ async function performSingleUndoAction(observationId, undoAction) {
                     }
                 } else if (undoAction.originalValue) {
                     // No current value but we have an original value to restore
-                    console.log('No current value, restoring original:', undoAction.originalValue);
+                    debugLog('No current value, restoring original:', undoAction.originalValue);
                     const restoreResult = await makeAPIRequest('/observation_field_values', {
                         method: 'POST',
                         body: JSON.stringify({
@@ -835,7 +853,7 @@ async function performSingleUndoAction(observationId, undoAction) {
                 return { success: true, message: 'No action needed' };
             case 'removeFromProject':
                 if (!undoAction.actionApplied) {
-                    console.log(`Skipping undo for observation ${observationId} - original action wasn't applied. Reason: ${undoAction.reason}`);
+                    debugLog(`Skipping undo for observation ${observationId} - original action wasn't applied. Reason: ${undoAction.reason}`);
                     return {
                         success: true,
                         message: 'No undo needed - original action was not applied',
@@ -862,16 +880,16 @@ async function performSingleUndoAction(observationId, undoAction) {
                 }
                         
             case 'removeComment':
-                console.log('Attempting to remove comment:', undoAction);
+                debugLog('Attempting to remove comment:', undoAction);
                 if (undoAction.commentUUID) {
                     try {
                         const response = await makeAPIRequest(`/comments/${undoAction.commentUUID}`, { method: 'DELETE' });
-                        console.log('Comment deletion response:', response);
+                        debugLog('Comment deletion response:', response);
                         return { success: true, action: 'removeComment', message: 'Comment removed successfully' };
                     } catch (error) {
                         console.error('Error removing comment:', error);
                         if (error.message && error.message.includes('HTTP error! status: 404')) {
-                            console.log('Comment not found (404). It may have been already deleted.');
+                            debugLog('Comment not found (404). It may have been already deleted.');
                             return { success: true, action: 'removeComment', message: 'Comment already removed or not found' };
                         }
                         return { success: false, error: safeErrorString(error) };
@@ -883,17 +901,17 @@ async function performSingleUndoAction(observationId, undoAction) {
             case 'removeIdentification':
                 if (undoAction.identificationUUID) {
                     try {
-                        console.log('Removing identification:', undoAction.identificationUUID);
+                        debugLog('Removing identification:', undoAction.identificationUUID);
                         await makeAPIRequest(`/identifications/${undoAction.identificationUUID}`, { method: 'DELETE' });
-                        console.log('Identification successfully deleted');
+                        debugLog('Identification successfully deleted');
             
                         if (undoAction.previousIdentificationUUID) {
-                            console.log('Restoring previous identification:', undoAction.previousIdentificationUUID);
+                            debugLog('Restoring previous identification:', undoAction.previousIdentificationUUID);
                             await makeAPIRequest(`/identifications/${undoAction.previousIdentificationUUID}`, {
                                 method: 'PUT',
                                 body: JSON.stringify({ current: true })
                             });
-                            console.log('Previous identification restored');
+                            debugLog('Previous identification restored');
                         }
             
                         return { 
@@ -912,7 +930,7 @@ async function performSingleUndoAction(observationId, undoAction) {
             case 'restoreIdentification':
                 if (undoAction.identificationUUID) {
                     try {
-                        console.log('Restoring withdrawn identification:', undoAction.identificationUUID);
+                        debugLog('Restoring withdrawn identification:', undoAction.identificationUUID);
                         await makeAPIRequest(`/identifications/${undoAction.identificationUUID}`, {
                             method: 'PUT',
                             body: JSON.stringify({ current: true })
@@ -932,7 +950,7 @@ async function performSingleUndoAction(observationId, undoAction) {
                 }    
             case 'qualityMetric':
                 if (undoAction.vote === 'remove') {
-                    console.log('Skipping undo for DQI removal as it\'s not supported');
+                    debugLog('Skipping undo for DQI removal as it\'s not supported');
                     return { success: true, action: 'qualityMetric', message: 'Undo of DQI removal not supported' };
                 }
                 
@@ -943,7 +961,7 @@ async function performSingleUndoAction(observationId, undoAction) {
                 
                 try {
                     const response = await makeAPIRequest(endpoint, { method: 'DELETE' });
-                    console.log(`Quality metric vote removal response for ${undoAction.metric}:`, response);
+                    debugLog(`Quality metric vote removal response for ${undoAction.metric}:`, response);
                     
                     return {
                         success: true,
@@ -1002,7 +1020,7 @@ async function performSingleUndoAction(observationId, undoAction) {
 }
 
 function createProgressBar() {
-    console.log('Creating progress bar');
+    debugLog('Creating progress bar');
     const progressBarContainer = document.createElement('div');
     progressBarContainer.style.cssText = `
         width: 100%;
@@ -1123,16 +1141,16 @@ async function makeAPIRequest(endpoint, options = {}) {
     if (jwt) {
         const isValid = await testJWT();
         if (isValid) {
-            console.log('JWT is valid');
+            debugLog('JWT is valid');
         } else {
-            console.log('JWT is invalid, will try to get a new one on next API call');
+            debugLog('JWT is invalid, will try to get a new one on next API call');
             currentJWT = null;
             if (isOptionsPage()) {
                 showJWTAlert();
             }
         }
     } else {
-        console.log('No JWT found');
+        debugLog('No JWT found');
         if (isOptionsPage()) {
             showJWTAlert();
         }
@@ -1233,7 +1251,7 @@ async function getJWT() {
 async function testJWT() {
     try {
         const response = await makeAPIRequest('/users/me');
-        console.log('JWT test response:', response);
+        debugLog('JWT test response:', response);
         return response && response.results && response.results[0] && response.results[0].id;
     } catch (error) {
         console.error('Error in JWT test:', error);
@@ -1269,22 +1287,22 @@ async function addOrRemoveObservationFromList(observationId, listId, isRemove = 
                     if (observationIndex !== -1) {
                         customLists[listIndex].observations.splice(observationIndex, 1);
                         browserAPI.storage.local.set({customLists: customLists}, function() {
-                            console.log(`Observation ${observationId} removed from list ${customLists[listIndex].name}`);
+                            debugLog(`Observation ${observationId} removed from list ${customLists[listIndex].name}`);
                             resolve({ success: true, message: `Observation removed from list: ${customLists[listIndex].name}` });
                         });
                     } else {
-                        console.log(`Observation ${observationId} not in list ${customLists[listIndex].name}`);
+                        debugLog(`Observation ${observationId} not in list ${customLists[listIndex].name}`);
                         resolve({ success: true, message: 'Observation not in list' });
                     }
                 } else {
                     if (observationIndex === -1) {
                         customLists[listIndex].observations.push(observationId);
                         browserAPI.storage.local.set({customLists: customLists}, function() {
-                            console.log(`Observation ${observationId} added to list ${customLists[listIndex].name}`);
+                            debugLog(`Observation ${observationId} added to list ${customLists[listIndex].name}`);
                             resolve({ success: true, message: `Observation added to list: ${customLists[listIndex].name}` });
                         });
                     } else {
-                        console.log(`Observation ${observationId} already in list ${customLists[listIndex].name}`);
+                        debugLog(`Observation ${observationId} already in list ${customLists[listIndex].name}`);
                         resolve({ success: true, message: 'Observation already in list' });
                     }
                 }
@@ -1306,7 +1324,7 @@ async function lookupTaxonById(taxonId) {
 // In shared_api.js
 async function getFieldValueDetails(observationId, fieldId) {
     try {
-        console.log(`getFieldValueDetails: Fetching obs ${observationId} for field ${fieldId}`);
+        debugLog(`getFieldValueDetails: Fetching obs ${observationId} for field ${fieldId}`);
         const response = await makeAPIRequest(`/observations/${observationId}`);
         if (!response || !response.results || !response.results[0]) {
             console.warn(`getFieldValueDetails: Observation ${observationId} not found or no results.`);
@@ -1316,21 +1334,21 @@ async function getFieldValueDetails(observationId, fieldId) {
         const numericFieldId = parseInt(fieldId); // Ensure fieldId is a number for matching
         const fieldValue = observation.ofvs.find(ofv => ofv.field_id === numericFieldId);
         
-        console.log(`getFieldValueDetails: For obs ${observationId}, field ${fieldId}: Found OFV:`, 
+        debugLog(`getFieldValueDetails: For obs ${observationId}, field ${fieldId}: Found OFV:`, 
             fieldValue ? JSON.parse(JSON.stringify(fieldValue)) : null); // Log a copy
 
         if (!fieldValue) {
-            console.log(`getFieldValueDetails: No OFV found for field ${fieldId} on obs ${observationId}.`);
+            debugLog(`getFieldValueDetails: No OFV found for field ${fieldId} on obs ${observationId}.`);
             return null;
         }
 
         // --- ADD DETAILED LOGGING FOR fieldValue.value ---
-        console.log(`getFieldValueDetails: For field ${fieldId} (Obs: ${observationId}), raw fieldValue.value is:`, fieldValue.value);
-        console.log(`getFieldValueDetails: Type of fieldValue.value is:`, typeof fieldValue.value);
+        debugLog(`getFieldValueDetails: For field ${fieldId} (Obs: ${observationId}), raw fieldValue.value is:`, fieldValue.value);
+        debugLog(`getFieldValueDetails: Type of fieldValue.value is:`, typeof fieldValue.value);
         if (typeof fieldValue.value === 'object' && fieldValue.value !== null) {
-            console.log(`getFieldValueDetails: fieldValue.value is an object. Keys:`, Object.keys(fieldValue.value));
+            debugLog(`getFieldValueDetails: fieldValue.value is an object. Keys:`, Object.keys(fieldValue.value));
             try {
-                console.log(`getFieldValueDetails: fieldValue.value stringified:`, JSON.stringify(fieldValue.value));
+                debugLog(`getFieldValueDetails: fieldValue.value stringified:`, JSON.stringify(fieldValue.value));
             } catch (e) {
                 console.warn(`getFieldValueDetails: Could not stringify fieldValue.value object.`);
             }
@@ -1437,7 +1455,7 @@ async function markObservationReviewed(observationId, markAsReviewed) {
 
         // Step 2: Determine if action is needed
         if (markAsReviewed === isCurrentlyReviewed) {
-            console.log(`Observation ${observationId} is already in the desired reviewed state (${markAsReviewed ? 'reviewed' : 'unreviewed'}). No action taken.`);
+            debugLog(`Observation ${observationId} is already in the desired reviewed state (${markAsReviewed ? 'reviewed' : 'unreviewed'}). No action taken.`);
             return { success: true, originalState: isCurrentlyReviewed ? 'reviewed' : 'unreviewed' };
         }
 
@@ -1459,7 +1477,7 @@ async function markObservationReviewed(observationId, markAsReviewed) {
             throw new Error(`Failed to mark as ${markAsReviewed ? 'reviewed' : 'unreviewed'}. Status: ${actionResponse.status}`);
         }
 
-        console.log(`Successfully marked observation ${observationId} as ${markAsReviewed ? 'reviewed' : 'unreviewed'}`);
+        debugLog(`Successfully marked observation ${observationId} as ${markAsReviewed ? 'reviewed' : 'unreviewed'}`);
         return { success: true, originalState: isCurrentlyReviewed ? 'reviewed' : 'unreviewed' };
     } catch (error) {
         console.error(`Error marking observation ${observationId} as reviewed/unreviewed:`, error);
@@ -1473,7 +1491,7 @@ async function toggleFollowObservation(observationId) {
             method: 'POST'
         });
 
-        console.log(`Successfully toggled follow state for observation ${observationId}`);
+        debugLog(`Successfully toggled follow state for observation ${observationId}`);
         return { success: true };
     } catch (error) {
         console.error(`Error toggling follow state for observation ${observationId}:`, error);
@@ -1533,7 +1551,7 @@ async function performProjectAction(observationId, projectId, remove = false) {
                         project_id: projectId
                     }
                 };
-                console.log(`Making DIRECT POST to: ${projectAddUrl} with body:`, JSON.stringify(projectAddData).substring(0,100) + "...");
+                debugLog(`Making DIRECT POST to: ${projectAddUrl} with body:`, JSON.stringify(projectAddData).substring(0,100) + "...");
 
                 const response = await fetch(projectAddUrl, {
                     method: 'POST',
@@ -1545,7 +1563,7 @@ async function performProjectAction(observationId, projectId, remove = false) {
                 });
 
                 const responseText = await response.text();
-                console.log(`Direct POST response status: ${response.status} for ${projectAddUrl}`);
+                debugLog(`Direct POST response status: ${response.status} for ${projectAddUrl}`);
 
                 if (!response.ok) {
                     const error = new Error(`HTTP error (direct POST)! status: ${response.status}, body: ${responseText}`);
@@ -1656,7 +1674,7 @@ async function performProjectAction(observationId, projectId, remove = false) {
 
 
 function handleProjectActionResults(results, wasRemoval = false) {
-    console.log('Raw results for project action summary:', results);
+    debugLog('Raw results for project action summary:', results);
     const summary = {
         projectSuccess: [], // Observations where project action succeeded
         projectSkipped: [], // Observations where project action was skipped (noActionNeeded)
@@ -1728,7 +1746,7 @@ function handleProjectActionResults(results, wasRemoval = false) {
             });
         }
     }
-    console.log("Generated project summary:", summary);
+    debugLog("Generated project summary:", summary);
     return summary;
 }
 
@@ -1905,7 +1923,7 @@ function getCleanErrorMessage(error) {
 
 // New function to summarize outcomes by action type
 function summarizeBulkActionOutcomes(allActionResults, configuredActions) {
-    console.log('Summarizing bulk action outcomes. All results:', allActionResults, 'Configured actions:', configuredActions);
+    debugLog('Summarizing bulk action outcomes. All results:', allActionResults, 'Configured actions:', configuredActions);
     const summaryByActionType = {};
 
     // Initialize summary structure based on the actions in the pressed button
@@ -1986,7 +2004,7 @@ function summarizeBulkActionOutcomes(allActionResults, configuredActions) {
             }
         });
     }
-    console.log("Generated summary by action type:", summaryByActionType);
+    debugLog("Generated summary by action type:", summaryByActionType);
     return summaryByActionType;
 }
 
