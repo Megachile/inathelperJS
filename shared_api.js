@@ -85,9 +85,13 @@ const controlledTerms = {
 
 let currentJWT = null;
 const API_URL = 'https://api.inaturalist.org/v1';
+// Standard identify-page query string used for "review these observations" deep links.
+// Includes all quality grades / review states / verifiability / places so the resulting
+// URL surfaces every observation in the supplied id list.
+const IDENTIFY_PAGE_URL = 'https://www.inaturalist.org/observations/identify?quality_grade=casual,needs_id,research&reviewed=any&verifiable=any&place_id=any';
 
 function lookupTaxon(query, per_page = 10) {
-    const baseUrl = 'https://api.inaturalist.org/v1/taxa/autocomplete';
+    const baseUrl = `${API_URL}/taxa/autocomplete`;
     const params = new URLSearchParams({
         q: query,
         per_page: per_page
@@ -103,7 +107,7 @@ function lookupTaxon(query, per_page = 10) {
 }
 
 function lookupProject(query, perPage = 10) {
-    const baseUrl = 'https://api.inaturalist.org/v1/projects';
+    const baseUrl = `${API_URL}/projects`;
     const params = new URLSearchParams({
         q: query,
         per_page: perPage,
@@ -122,7 +126,7 @@ function lookupProject(query, perPage = 10) {
 
 function lookupObservationField(name, perPage = 10) {
     return new Promise((resolve, reject) => {
-        const baseUrl = 'https://api.inaturalist.org/v1/observation_fields/autocomplete';
+        const baseUrl = `${API_URL}/observation_fields/autocomplete`;
         const params = new URLSearchParams({
             q: name,
             per_page: perPage
@@ -152,7 +156,7 @@ function lookupObservationField(name, perPage = 10) {
 }
 
 function lookupPlace(query, perPage = 10) {
-    const baseUrl = 'https://api.inaturalist.org/v1/places/autocomplete';
+    const baseUrl = `${API_URL}/places/autocomplete`;
     const params = new URLSearchParams({
         q: query,
         per_page: perPage
@@ -165,7 +169,7 @@ function lookupPlace(query, perPage = 10) {
 }
 
 function lookupUser(query, perPage = 10) {
-    const baseUrl = 'https://api.inaturalist.org/v1/users/autocomplete';
+    const baseUrl = `${API_URL}/users/autocomplete`;
     const params = new URLSearchParams({
         q: query,
         per_page: perPage
@@ -464,7 +468,7 @@ function setupObservationFieldAutocomplete(nameInput, idInput) {
 
 
 function generateObservationURL(observationIds) {
-    const baseURL = 'https://www.inaturalist.org/observations/identify?quality_grade=casual,needs_id,research&reviewed=any&verifiable=any&place_id=any';
+    const baseURL = IDENTIFY_PAGE_URL;
     return `${baseURL}&per_page=${observationIds.length}&id=${observationIds.join(',')}`;
 }
 
@@ -969,7 +973,7 @@ async function performSingleUndoAction(observationId, undoAction) {
                     const jwt = await getJWT();
                     if (!jwt) return { success: false, error: 'No JWT found' };
                     const previousTagList = (undoAction.previousTags || []).join(',');
-                    const response = await fetch(`https://api.inaturalist.org/v1/observations/${observationId}`, {
+                    const response = await fetch(`${API_URL}/observations/${observationId}`, {
                         method: 'PUT',
                         headers: {
                             'Content-Type': 'application/json',
@@ -1217,7 +1221,7 @@ function generateListObservationURL(listId) {
             const customLists = data.customLists || [];
             const list = customLists.find(l => l.id === listId);
             if (list && list.observations.length > 0) {
-                const baseURL = 'https://www.inaturalist.org/observations/identify?quality_grade=casual,needs_id,research&reviewed=any&verifiable=any&place_id=any';
+                const baseURL = IDENTIFY_PAGE_URL;
                 const url = `${baseURL}&per_page=${list.observations.length}&id=${list.observations.join(',')}`;
                 resolve(url);
             } else {
@@ -1267,7 +1271,7 @@ async function addOrRemoveObservationFromList(observationId, listId, isRemove = 
 }
 
 async function lookupTaxonById(taxonId) {
-    const baseUrl = 'https://api.inaturalist.org/v1/taxa';
+    const baseUrl = `${API_URL}/taxa`;
     const response = await fetch(`${baseUrl}/${taxonId}`);
     const data = await response.json();
     return data.results;
@@ -1387,7 +1391,7 @@ async function markObservationReviewed(observationId, markAsReviewed) {
     }
 
     // Step 1: Check the current reviewed state
-    const checkUrl = `https://api.inaturalist.org/v1/observations/${observationId}`;
+    const checkUrl = `${API_URL}/observations/${observationId}`;
     try {
         const response = await fetch(checkUrl, {
             method: 'GET',
@@ -1412,7 +1416,7 @@ async function markObservationReviewed(observationId, markAsReviewed) {
         }
 
         // Step 3: Perform the action
-        const url = `https://api.inaturalist.org/v1/observations/${observationId}/review`;
+        const url = `${API_URL}/observations/${observationId}/review`;
         const method = markAsReviewed ? 'POST' : 'DELETE';
         const body = markAsReviewed ? JSON.stringify({ reviewed: "true" }) : null;
 
@@ -1827,7 +1831,7 @@ function createProjectActionResultsModal(summary, projectName, wasRemoval = fals
             <div style="margin: 15px 0; padding: 10px; background: #ffeded; border-radius: 4px;">
                 <h3>Project Action Failed (${failuresToList.length} observations)</h3>
                  <p>The project addition/removal action failed for these observations:</p>
-                <p><a href="https://www.inaturalist.org/observations/identify?quality_grade=casual,needs_id,research&reviewed=any&verifiable=any&place_id=any&id=${failuresToList.map(f => f.observationId).join(',')}" 
+                <p><a href="${IDENTIFY_PAGE_URL}&id=${failuresToList.map(f => f.observationId).join(',')}" 
                       target="_blank" style="color: #0077cc; text-decoration: underline;">
                     View these observations
                 </a></p>

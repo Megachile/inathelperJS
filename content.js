@@ -675,7 +675,7 @@ async function addObservationField(observationId, fieldId, value, button = null)
             return { success: false, error: 'No JWT found' };
         }
 
-        const requestUrl = `https://api.inaturalist.org/v1/observation_field_values`;
+        const requestUrl = `${API_URL}/observation_field_values`;
         const headers = {
             'Authorization': `Bearer ${jwt}`,
             'Content-Type': 'application/json'
@@ -725,7 +725,7 @@ async function addAnnotation(observationId, attributeId, valueId) {
         return { success: false, error: 'No JWT found' };
     }
 
-    const url = 'https://api.inaturalist.org/v1/annotations';
+    const url = `${API_URL}/annotations`;
     const data = {
         annotation: {
             resource_type: "Observation",
@@ -762,7 +762,7 @@ async function addAnnotation(observationId, attributeId, valueId) {
 async function voteOnExistingAnnotation(observationId, attributeId, valueId, jwt) {
     try {
         // Fetch the observation to find the existing annotation UUID
-        const obsResponse = await fetch(`https://api.inaturalist.org/v1/observations/${observationId}`, {
+        const obsResponse = await fetch(`${API_URL}/observations/${observationId}`, {
             headers: { 'Authorization': `Bearer ${jwt}` }
         });
         const obsData = await obsResponse.json();
@@ -787,13 +787,13 @@ async function voteOnExistingAnnotation(observationId, attributeId, valueId, jwt
             if (conflictingAnnotation) {
                 console.log(`Found conflicting annotation (value ${conflictingAnnotation.controlled_value_id} vs desired ${valueId}), attempting to replace`);
                 // Try to delete the conflicting annotation (only works if it's ours)
-                const deleteResponse = await fetch(`https://api.inaturalist.org/v1/annotations/${conflictingAnnotation.uuid}`, {
+                const deleteResponse = await fetch(`${API_URL}/annotations/${conflictingAnnotation.uuid}`, {
                     method: 'DELETE',
                     headers: { 'Authorization': `Bearer ${jwt}` }
                 });
                 if (deleteResponse.ok) {
                     // DELETE succeeded - try to re-add with new value
-                    const retryResponse = await fetch('https://api.inaturalist.org/v1/annotations', {
+                    const retryResponse = await fetch(`${API_URL}/annotations`, {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
@@ -820,7 +820,7 @@ async function voteOnExistingAnnotation(observationId, attributeId, valueId, jwt
                 {
                     // Can't replace annotation, vote to disagree instead
                     console.log(`Voting to disagree on conflicting annotation`);
-                    const voteUrl = `https://api.inaturalist.org/v1/votes/vote/annotation/${conflictingAnnotation.uuid}`;
+                    const voteUrl = `${API_URL}/votes/vote/annotation/${conflictingAnnotation.uuid}`;
                     const voteResponse = await fetch(voteUrl, {
                         method: 'POST',
                         headers: {
@@ -840,7 +840,7 @@ async function voteOnExistingAnnotation(observationId, attributeId, valueId, jwt
         }
 
         // Vote in agreement with the existing annotation
-        const voteUrl = `https://api.inaturalist.org/v1/votes/vote/annotation/${existingAnnotation.uuid}`;
+        const voteUrl = `${API_URL}/votes/vote/annotation/${existingAnnotation.uuid}`;
         const voteResponse = await fetch(voteUrl, {
             method: 'POST',
             headers: {
@@ -876,7 +876,7 @@ async function addObservationToProject(observationId, projectId) {
         return { success: false, error: 'No JWT found' };
     }
 
-    const url = 'https://api.inaturalist.org/v1/project_observations';
+    const url = `${API_URL}/project_observations`;
     const data = {
         project_observation: {
             observation_id: observationId,
@@ -919,7 +919,7 @@ async function addComment(observationId, commentBody) {
         return { success: false, error: 'No JWT found' };
     }
 
-    const url = 'https://api.inaturalist.org/v1/comments';
+    const url = `${API_URL}/comments`;
     const data = {
         comment: {
             parent_type: 'Observation',
@@ -966,7 +966,7 @@ async function addTag(observationId, tagText) {
 
     try {
         // First fetch existing tags so we don't overwrite them
-        const obsResponse = await fetch(`https://api.inaturalist.org/v1/observations/${observationId}`, {
+        const obsResponse = await fetch(`${API_URL}/observations/${observationId}`, {
             headers: { 'Authorization': `Bearer ${jwt}` }
         });
         const obsData = await obsResponse.json();
@@ -986,7 +986,7 @@ async function addTag(observationId, tagText) {
         const newTagList = [...existingTags, tagText.trim()].join(',');
 
         // Update observation with new tag list
-        const updateUrl = `https://api.inaturalist.org/v1/observations/${observationId}`;
+        const updateUrl = `${API_URL}/observations/${observationId}`;
         const response = await fetch(updateUrl, {
             method: 'PUT',
             headers: {
@@ -1030,7 +1030,7 @@ async function addTaxonId(observationId, taxonId, comment = '', disagreement = f
         return { success: false, error: 'No JWT found' };
     }
 
-    const url = 'https://api.inaturalist.org/v1/identifications';
+    const url = `${API_URL}/identifications`;
     const data = {
         identification: {
             observation_id: observationId,
@@ -1075,16 +1075,16 @@ async function handleQualityMetricAPI(observationId, metric, vote) {
 
     if (metric === 'needs_id') {
         if (vote === 'remove') {
-            url = `https://api.inaturalist.org/v1/votes/unvote/observation/${observationId}?scope=needs_id`;
+            url = `${API_URL}/votes/unvote/observation/${observationId}?scope=needs_id`;
             method = 'DELETE';
             body = null;
         } else {
-            url = `https://api.inaturalist.org/v1/votes/vote/observation/${observationId}`;
+            url = `${API_URL}/votes/vote/observation/${observationId}`;
             method = 'POST';
             body = JSON.stringify({ vote: vote === 'agree' ? 'yes' : 'no', scope: 'needs_id' });
         }
     } else {
-        url = `https://api.inaturalist.org/v1/observations/${observationId}/quality/${metric}`;
+        url = `${API_URL}/observations/${observationId}/quality/${metric}`;
         method = vote === 'remove' ? 'DELETE' : 'POST';
         body = vote === 'disagree' ? JSON.stringify({ agree: "false" }) : null;
     }
@@ -1578,7 +1578,7 @@ async function updateQualityMetrics(observationId) {
             return;
         }
 
-        const qualityMetricsUrl = `https://api.inaturalist.org/v1/observations/${observationId}/quality_metrics?ttl=-1`;
+        const qualityMetricsUrl = `${API_URL}/observations/${observationId}/quality_metrics?ttl=-1`;
         const response = await fetch(qualityMetricsUrl, {
             headers: {
                 'Authorization': `Bearer ${jwt}`
@@ -3228,7 +3228,7 @@ function parseCSVObservations(csvText) {
     // Remove duplicates
     const uniqueIds = [...new Set(ids)];
 
-    const identifyUrl = `https://www.inaturalist.org/observations/identify?quality_grade=casual,needs_id,research&reviewed=any&verifiable=any&place_id=any&per_page=${uniqueIds.length}&id=${uniqueIds.join(',')}`;
+    const identifyUrl = `${IDENTIFY_PAGE_URL}&per_page=${uniqueIds.length}&id=${uniqueIds.join(',')}`;
 
     window.location.href = identifyUrl;
 }
@@ -4016,7 +4016,7 @@ async function generatePreActionStates(observationIds, checkCancelled, modal) {
 
         try {
             // Fetch all observations in this batch with a single API call
-            const obsData = await fetchWithRetry(`https://api.inaturalist.org/v1/observations/${idsParam}`);
+            const obsData = await fetchWithRetry(`${API_URL}/observations/${idsParam}`);
 
             // Store each observation's data
             for (const obs of obsData.results) {
@@ -5071,7 +5071,7 @@ function updateActionDescription(actionSelect) {
 }
 
 async function fetchTaxonData(taxonId) {
-    const response = await fetch(`https://api.inaturalist.org/v1/taxa/${taxonId}`);
+    const response = await fetch(`${API_URL}/taxa/${taxonId}`);
     if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
     }
