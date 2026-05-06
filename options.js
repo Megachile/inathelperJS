@@ -2123,7 +2123,10 @@ async function renameCurrentSet() { // Make async
                 if (dataToUpdateInStorage.contentScriptActiveSetName) {
                     await browserAPI.storage.local.set(dataToUpdateInStorage);
                 }
-            } catch (e) { /* error already handled by saveConfigurationSets */ }
+            } catch (e) {
+                console.error('Error renaming configuration set:', safeErrorString(e));
+                alert(`Failed to fully rename the configuration set: ${safeErrorString(e)}\n\nThe set list may be in an inconsistent state — please reload the options page and verify.`);
+            }
         }
     }
 }
