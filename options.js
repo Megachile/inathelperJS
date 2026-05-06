@@ -223,23 +223,14 @@ function formatBytes(bytes, decimals = 2) {
 function updateStorageUsageDisplay() {
     const storageStatusElement = document.getElementById('storageStatus');
 
-    // --- CRITICAL DEBUGGING ---
-    console.log('Directly accessing browserAPI.storage.local.QUOTA_BYTES:', browserAPI.storage.local.QUOTA_BYTES, 
-                'Type:', typeof browserAPI.storage.local.QUOTA_BYTES);
-    // --- END CRITICAL DEBUGGING ---
-
     let totalQuota = browserAPI.storage.local.QUOTA_BYTES;
 
-    // Fallback if QUOTA_BYTES is not a valid number (e.g., undefined, NaN, or 0)
+    // Firefox doesn't expose QUOTA_BYTES on storage.local; fall back to its 5MB default.
     if (typeof totalQuota !== 'number' || isNaN(totalQuota) || totalQuota <= 0) {
-        console.warn('browserAPI.storage.local.QUOTA_BYTES was invalid (' + totalQuota + '). Falling back to a default value of 5MB for Firefox.');
-        totalQuota = 5 * 1024 * 1024; // 5,242,880 bytes - Standard Firefox local storage quota
+        totalQuota = 5 * 1024 * 1024;
     }
 
-    // --- DEBUG LOG for browserAPI object structure ---
-    if (browserAPI && browserAPI.storage && browserAPI.storage.local) {
-        console.log("In updateStorageUsageDisplay - browserAPI.storage.local.getBytesInUse is:", browserAPI.storage.local.getBytesInUse, "(Type:", typeof browserAPI.storage.local.getBytesInUse, ")");
-    } else {
+    if (!browserAPI || !browserAPI.storage || !browserAPI.storage.local) {
         console.error("browserAPI or browserAPI.storage.local is not defined!");
         if (storageStatusElement) {
             storageStatusElement.textContent = 'Storage Usage: API Error';
@@ -247,12 +238,10 @@ function updateStorageUsageDisplay() {
         }
         return;
     }
-    // --- END DEBUG LOG ---
 
     if (storageStatusElement && typeof browserAPI.storage.local.getBytesInUse === 'function') {
         try {
             browserAPI.storage.local.getBytesInUse(null, function(bytesInUse) {
-                console.log("getBytesInUse callback invoked. bytesInUse:", bytesInUse, "typeof bytesInUse:", typeof bytesInUse);
                 if (browserAPI.runtime.lastError) {
                     console.error("Error calling getBytesInUse:", browserAPI.runtime.lastError.message);
                     estimateStorageUsage(storageStatusElement, totalQuota); // Use the potentially corrected totalQuota
@@ -289,8 +278,7 @@ function estimateStorageUsage(statusElement, totalQuota) {
             // Estimate size based on the JSON stringified representation (UTF-8 bytes)
             const allDataString = JSON.stringify(items);
             const estimatedBytesInUse = new TextEncoder().encode(allDataString).length;
-            
-            console.log("Estimated storage usage (bytes):", estimatedBytesInUse);
+
             displayFormattedUsage(estimatedBytesInUse, totalQuota, statusElement, "(estimated)");
 
         } catch (e) {

@@ -83,9 +83,9 @@ async function getCurrentUserId() {
     }
 }
 
-function debugLog(message) {
+function debugLog(...args) {
     if (debugMode) {
-        console.log(message);
+        console.log(...args);
     }
 }
 
@@ -3721,43 +3721,39 @@ async function executeBulkAction(selectedActionConfig, modal, isCancelledFunc) {
             if (statusElement) statusElement.textContent = `Processing observation ${processedObservations}/${totalObservations}...`;
         } // End of for...of observationIds loop
 
-        // DEBUG: Comprehensive logging for issue #27
-        console.log('=== UNDO RECORD DEBUG START ===');
-        console.log('Total observations processed:', observationIds.length);
-        console.log('Total action results:', allActionResults.length);
+        // Diagnostic block — gated behind debugMode; the missing-observation
+        // warnings below are kept as console.warn since they indicate a real
+        // gap in the undo record that the user should know about.
+        debugLog('=== UNDO RECORD DEBUG START ===');
+        debugLog('Total observations processed:', observationIds.length);
+        debugLog('Total action results:', allActionResults.length);
 
         const successfulResults = allActionResults.filter(r => r.success);
-        console.log('Successful action results:', successfulResults.length);
+        debugLog('Successful action results:', successfulResults.length);
 
         const uniqueSuccessfulObsIds = [...new Set(successfulResults.map(r => r.observationId))];
-        console.log('Unique successful observation IDs:', uniqueSuccessfulObsIds.length);
-        console.log('Unique successful IDs:', uniqueSuccessfulObsIds);
+        debugLog('Unique successful observation IDs:', uniqueSuccessfulObsIds.length, uniqueSuccessfulObsIds);
 
         const prelimObsIds = Object.keys(preliminaryUndoRecord.observations);
-        console.log('Preliminary undo record observation count:', prelimObsIds.length);
-        console.log('Preliminary undo record IDs:', prelimObsIds);
+        debugLog('Preliminary undo record observations:', prelimObsIds.length, prelimObsIds);
 
-        // Find observations that succeeded but are not in preliminary record
         const missingFromPrelim = uniqueSuccessfulObsIds.filter(id => !prelimObsIds.includes(id));
         if (missingFromPrelim.length > 0) {
-            console.error('⚠️ OBSERVATIONS MISSING FROM PRELIMINARY UNDO RECORD:', missingFromPrelim);
-            console.error('These observations had successful actions but won\'t be in undo record!');
+            console.warn('Observations missing from preliminary undo record (had successful actions but won\'t be undoable):', missingFromPrelim);
         }
 
         const finalUndoRecord = generateUndoRecord(preliminaryUndoRecord, allActionResults, overwrittenValues);
 
         const finalObsIds = Object.keys(finalUndoRecord.observations);
-        console.log('Final undo record observation count:', finalObsIds.length);
-        console.log('Final undo record IDs:', finalObsIds);
+        debugLog('Final undo record observations:', finalObsIds.length, finalObsIds);
 
-        // Find observations that succeeded but are not in final record
         const missingFromFinal = uniqueSuccessfulObsIds.filter(id => !finalObsIds.includes(id));
         if (missingFromFinal.length > 0) {
-            console.error('⚠️ OBSERVATIONS MISSING FROM FINAL UNDO RECORD:', missingFromFinal);
-            console.error('Count discrepancy: Successful =', uniqueSuccessfulObsIds.length, 'vs Undo Record =', finalObsIds.length);
+            console.warn('Observations missing from final undo record:', missingFromFinal,
+                `(successful: ${uniqueSuccessfulObsIds.length}, recorded: ${finalObsIds.length})`);
         }
 
-        console.log('=== UNDO RECORD DEBUG END ===');
+        debugLog('=== UNDO RECORD DEBUG END ===');
 
         await storeUndoRecord(finalUndoRecord);
 
@@ -3966,8 +3962,8 @@ function downloadTextFile(content, filename) {
 }
 
 async function generatePreActionStates(observationIds, checkCancelled, modal) {
-    console.log('=== PRE-ACTION STATES DEBUG START ===');
-    console.log('Fetching pre-action states for', observationIds.length, 'observations');
+    debugLog('=== PRE-ACTION STATES DEBUG START ===');
+    debugLog('Fetching pre-action states for', observationIds.length, 'observations');
     const preActionStates = {};
     const failedFetches = [];
     const statusElement = modal ? modal.querySelector('#bulk-action-status') : null;
@@ -3978,7 +3974,7 @@ async function generatePreActionStates(observationIds, checkCancelled, modal) {
     for (let i = 0; i < observationIds.length; i += batchSize) {
         // Check for cancellation
         if (checkCancelled && checkCancelled()) {
-            console.log('Pre-action state fetch cancelled by user');
+            debugLog('Pre-action state fetch cancelled by user');
             if (statusElement) statusElement.textContent = 'Cancelled';
             break;
         }
@@ -4017,11 +4013,11 @@ async function generatePreActionStates(observationIds, checkCancelled, modal) {
             const returnedIds = obsData.results.map(obs => obs.id.toString());
             const missingIds = batch.filter(id => !returnedIds.includes(id));
             if (missingIds.length > 0) {
-                console.error(`⚠️ DEBUG ISSUE #27: Observations not returned by API:`, missingIds);
+                console.warn('Pre-action fetch: observations not returned by API:', missingIds);
                 failedFetches.push(...missingIds);
             }
         } catch (error) {
-            console.error(`⚠️ DEBUG ISSUE #27: Failed to fetch batch starting at ${batch[0]}:`, error);
+            console.warn(`Pre-action fetch: failed to fetch batch starting at ${batch[0]}:`, error);
             failedFetches.push(...batch);
         }
 
@@ -4035,13 +4031,11 @@ async function generatePreActionStates(observationIds, checkCancelled, modal) {
         }
     }
 
-    console.log('Pre-action states fetched for', Object.keys(preActionStates).length, 'observations');
+    debugLog('Pre-action states fetched for', Object.keys(preActionStates).length, 'observations');
     if (failedFetches.length > 0) {
-        console.error(`⚠️ DEBUG ISSUE #27: Failed to fetch ${failedFetches.length} pre-action states`);
-        console.error('Failed observation IDs:', failedFetches);
-        console.error('These observations will NOT be in the undo record!');
+        console.warn(`Pre-action fetch: failed for ${failedFetches.length} observations — these will not be in the undo record:`, failedFetches);
     }
-    console.log('=== PRE-ACTION STATES DEBUG END ===');
+    debugLog('=== PRE-ACTION STATES DEBUG END ===');
 
     return preActionStates;
 }
@@ -4051,9 +4045,9 @@ function generateUniqueId() {
 }
 
 async function generatePreliminaryUndoRecord(action, observationIds, preActionStates) {
-    console.log('Generating preliminary undo record for action:', action.name);
-    console.log('Total observation IDs to process:', observationIds.length);
-    console.log('Pre-action states available:', Object.keys(preActionStates).length);
+    debugLog('Generating preliminary undo record for action:', action.name);
+    debugLog('Total observation IDs to process:', observationIds.length);
+    debugLog('Pre-action states available:', Object.keys(preActionStates).length);
 
     let undoRecord = {
         id: generateUniqueId(),
@@ -4063,13 +4057,14 @@ async function generatePreliminaryUndoRecord(action, observationIds, preActionSt
     };
 
     const currentUserId = await getCurrentUserId();
-    console.log('Current user ID:', currentUserId);
+    debugLog('Current user ID:', currentUserId);
 
     const missingPreActionStates = [];
 
     for (const observationId of observationIds) {
         if (!preActionStates[observationId]) {
-            console.error(`⚠️ DEBUG ISSUE #27: No pre-action state found for observation ${observationId} - WILL NOT BE IN UNDO RECORD`);
+            // Pre-action state missing — observation will not be undoable.
+            // Surfaced as a single aggregate warning at the end of the loop.
             missingPreActionStates.push(observationId);
             continue;
         }
@@ -4092,7 +4087,7 @@ async function generatePreliminaryUndoRecord(action, observationIds, preActionSt
                         alreadyInDesiredState: isCurrentlyFollowed === willBeFollowed,
                         originalState: isCurrentlyFollowed ? 'followed' : 'unfollowed'
                     };
-                    console.log('Follow state for observation', observationId, ':', {
+                    debugLog('Follow state for observation', observationId, ':', {
                         current: isCurrentlyFollowed,
                         willBe: willBeFollowed,
                         originalState: undoAction.originalState
@@ -4106,8 +4101,8 @@ async function generatePreliminaryUndoRecord(action, observationIds, preActionSt
                         type: 'reviewed',
                         originalState: isCurrentlyReviewed ? 'reviewed' : 'unreviewed'
                     };
-                    console.log(`Original reviewed state for observation ${observationId}:`, 
-                        isCurrentlyReviewed, 
+                    debugLog(`Original reviewed state for observation ${observationId}:`,
+                        isCurrentlyReviewed,
                         'reviewed_by:', preActionStates[observationId].reviewed_by);
                     break;           
                 case 'withdrawId':
@@ -4181,10 +4176,10 @@ async function generatePreliminaryUndoRecord(action, observationIds, preActionSt
                     const userIdentifications = preActionStates[observationId].identifications
                         .filter(id => id.user.id === currentUserId && id.current)
                         .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-                    console.log('User active identifications:', userIdentifications);
+                    debugLog('User active identifications:', userIdentifications);
 
                     currentIdentification = userIdentifications[0]; // Assign here without redeclaring
-                    console.log('Current active identification:', currentIdentification);
+                    debugLog('Current active identification:', currentIdentification);
 
                     undoAction = {
                         type: 'removeIdentification',
@@ -4192,7 +4187,7 @@ async function generatePreliminaryUndoRecord(action, observationIds, preActionSt
                         identificationUUID: null, // This will be filled in after the action is performed
                         previousIdentificationUUID: currentIdentification ? currentIdentification.uuid : null
                     };
-                    console.log('Generated undo action:', undoAction);
+                    debugLog('Generated undo action:', undoAction);
                     break;
                 case 'qualityMetric':
                         undoAction = {
@@ -4200,7 +4195,7 @@ async function generatePreliminaryUndoRecord(action, observationIds, preActionSt
                             metric: actionItem.metric,
                             vote: actionItem.vote
                         };
-                        console.log(`Generated undo action for quality metric addition:`, undoAction);
+                        debugLog(`Generated undo action for quality metric addition:`, undoAction);
                     break;
                 case 'copyObservationField':
                     undoRecord.observations[observationId].undoActions.push({
@@ -4231,12 +4226,11 @@ async function generatePreliminaryUndoRecord(action, observationIds, preActionSt
     }
 
     if (missingPreActionStates.length > 0) {
-        console.error(`⚠️ DEBUG ISSUE #27: ${missingPreActionStates.length} observations missing from pre-action states!`);
-        console.error('Missing observation IDs:', missingPreActionStates);
+        console.warn(`Undo record: ${missingPreActionStates.length} observations missing from pre-action states (will not be undoable):`, missingPreActionStates);
     }
 
-    console.log('Generated preliminary undo record with', Object.keys(undoRecord.observations).length, 'observations');
-    console.log('Generated preliminary undo record:', undoRecord);
+    debugLog('Generated preliminary undo record with', Object.keys(undoRecord.observations).length, 'observations');
+    debugLog('Generated preliminary undo record:', undoRecord);
     return undoRecord;
 }
 
