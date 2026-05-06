@@ -5,8 +5,8 @@ function safeErrorString(error) {
     if (typeof error === 'string') return error;
     if (error.message) return error.message;
     try {
-        const str = safeErrorString(error);
-        if (str && str !== '[object Object]') return str;
+        const str = JSON.stringify(error);
+        if (str && str !== '{}' && str !== '[object Object]') return str;
     } catch (e) {}
     return 'Unknown error';
 }
