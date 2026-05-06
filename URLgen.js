@@ -1008,15 +1008,7 @@ function setupToggleListeners() {
     });
 }
 
-function refreshMap() {
-    if (map) {
-      console.log("Refreshing map...");
-      map.invalidateSize();
-      map.fitWorld();  // This will ensure the map fills the container
-    }
-  }
-  
-  function setupMap() {
+function setupMap() {
       console.log("Setting up map...");
       
       if (typeof L === 'undefined') {
