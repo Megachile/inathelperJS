@@ -372,7 +372,8 @@ function addField(type) {
             <label><input type="checkbox" class="negationCheckbox"> Without</label>
             <span class="negationNote" style="display:none; color: #888; font-style: italic;">No value: selects obs. blank for this annotation. With value: selects obs. with other values, not blank.</span>
         `;
-        setupAnnotationDropdowns(fieldCount);
+        // setupAnnotationDropdowns is called below after the field-group is
+        // appended to the container; calling it here would query an empty DOM.
     } else if (type === 'observationField') {
         fieldGroup.innerHTML = `
             <input type="text" id="${type}${fieldCount}" placeholder="Enter ${type}">
