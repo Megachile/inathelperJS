@@ -3506,6 +3506,37 @@ async function executeBulkAction(selectedActionConfig, modal, isCancelledFunc) {
         return isCancelledFunc() || modal.dataset.cancelled === 'true';
     };
 
+    // For any "prompt for value at runtime" observation field actions, ask once
+    // up front and apply the same value to every observation. Clone the action
+    // set so the user's saved button config isn't mutated by this run.
+    const promptIndices = selectedActionConfig.actions.reduce((acc, action, idx) => {
+        if (action.type === 'observationField' && action.promptForValue) acc.push(idx);
+        return acc;
+    }, []);
+    if (promptIndices.length > 0) {
+        selectedActionConfig = {
+            ...selectedActionConfig,
+            actions: selectedActionConfig.actions.map(a => ({ ...a })),
+        };
+        for (const idx of promptIndices) {
+            const action = selectedActionConfig.actions[idx];
+            const modalResult = await showFieldPromptModal(
+                action.fieldName,
+                action.fieldDatatype || '',
+                action.fieldAllowedValues || '',
+                action.displayValue || action.fieldValue || ''
+            );
+            if (modalResult === null) {
+                // User cancelled — abort the whole bulk action
+                if (modal.parentNode) document.body.removeChild(modal);
+                return { results: [], skippedObservations: [], overwrittenValues: {}, errorMessages: [] };
+            }
+            action.fieldValue = modalResult.value;
+            action.displayValue = modalResult.displayValue;
+            action.promptForValue = false; // already resolved; per-obs handler will skip its prompt branch
+        }
+    }
+
     const { safeMode = true } = await new Promise(resolve =>
         browserAPI.storage.local.get('safeMode', resolve)
     );
@@ -4971,8 +5002,12 @@ function updateActionDescription(actionSelect) {
                         actionDesc = `Withdraw your current identification`;
                         break;  
                     case 'observationField':
-                        const displayValue = action.displayValue || action.fieldValue;
-                        actionDesc = `Set field "${action.fieldName}" to "${displayValue}"`;
+                        if (action.promptForValue) {
+                            actionDesc = `Set field "${action.fieldName}" (prompt for value)`;
+                        } else {
+                            const displayValue = action.displayValue || action.fieldValue;
+                            actionDesc = `Set field "${action.fieldName}" to "${displayValue}"`;
+                        }
                         break;
                     case 'annotation':
                         // Find the field name by ID
@@ -6259,8 +6294,12 @@ async function createValidationModal(validationResults, selectedAction, onConfir
                         actionDesc = `Withdraw your current identification`;
                         break;
                     case 'observationField':
-                        const displayValue = action.displayValue || action.fieldValue;
-                        actionDesc = `Set field "${action.fieldName}" to "${displayValue}"`;
+                        if (action.promptForValue) {
+                            actionDesc = `Set field "${action.fieldName}" (prompt for value)`;
+                        } else {
+                            const displayValue = action.displayValue || action.fieldValue;
+                            actionDesc = `Set field "${action.fieldName}" to "${displayValue}"`;
+                        }
                         break;
                     case 'annotation':
                         // Find the field name by ID
@@ -6664,8 +6703,12 @@ function createActionDescription(selectedAction) {
                         actionDesc = `Withdraw your current identification`;
                         break;
                     case 'observationField':
-                        const displayValue = action.displayValue || action.fieldValue;
-                        actionDesc = `Set field "${action.fieldName}" to "${displayValue}"`;
+                        if (action.promptForValue) {
+                            actionDesc = `Set field "${action.fieldName}" (prompt for value)`;
+                        } else {
+                            const displayValue = action.displayValue || action.fieldValue;
+                            actionDesc = `Set field "${action.fieldName}" to "${displayValue}"`;
+                        }
                         break;
                     case 'annotation':
                         const fieldName = getAnnotationFieldName(action.annotationField);
