@@ -991,7 +991,7 @@ async function addTag(observationId, tagText) {
             return { success: true, previousTags: existingTags };
         } else {
             const errorData = await response.json().catch(() => ({}));
-            console.error('Error adding tag:', response.status, errorData);
+            console.error('Error adding tag:', response.status, safeErrorString(errorData));
             if (response.status === 403 || response.status === 401 || response.status === 410) {
                 return { success: false, error: 'You can only add tags to your own observations' };
             }
@@ -2663,7 +2663,7 @@ function createButton(config) {
                 resultsArray.forEach(result => {
                     if (!result.success) {
                         allSuccessfulInBatch = false;
-                        console.error('Action failed:', result); 
+                        console.error('Action failed:', safeErrorString(result));
                         
                         if (result.action === 'addToProject' || (result.projectId && result.reason)) {
                             // Find the original project action config to get the projectName
@@ -3868,7 +3868,7 @@ function handleActionResult(result, action, observationId, preliminaryUndoRecord
             }
         }
     } else {
-        console.error(`Action failed for observation ${observationId}:`, result.error);
+        console.error(`Action failed for observation ${observationId}:`, safeErrorString(result.error));
         skippedObservations.push(observationId);
     }
     results.push({ observationId, action: action.type, success: result.success, error: result.error });
