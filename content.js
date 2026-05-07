@@ -5010,6 +5010,12 @@ function updateActionDescription(actionSelect) {
                     case 'copyObservationField':
                         actionDesc = `Copy field: ${action.sourceFieldName} to ${action.targetFieldName}`;
                         break;
+                    case 'addTag':
+                        actionDesc = `Add tag: "${action.tagText}"`;
+                        break;
+                    case 'addToList':
+                        actionDesc = action.remove ? 'Remove from custom list' : 'Add to custom list';
+                        break;
                 }
                 if (actionDesc) {
                     descriptionHTML += `<li>${actionDesc}</li>`;
