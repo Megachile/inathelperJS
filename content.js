@@ -5003,7 +5003,7 @@ function updateActionDescription(actionSelect) {
                         break;  
                     case 'observationField':
                         if (action.promptForValue) {
-                            actionDesc = `Set field "${action.fieldName}" (prompt for value)`;
+                            actionDesc = `Set field "${action.fieldName}" (will prompt for value)`;
                         } else {
                             const displayValue = action.displayValue || action.fieldValue;
                             actionDesc = `Set field "${action.fieldName}" to "${displayValue}"`;
@@ -6295,7 +6295,7 @@ async function createValidationModal(validationResults, selectedAction, onConfir
                         break;
                     case 'observationField':
                         if (action.promptForValue) {
-                            actionDesc = `Set field "${action.fieldName}" (prompt for value)`;
+                            actionDesc = `Set field "${action.fieldName}" (will prompt for value)`;
                         } else {
                             const displayValue = action.displayValue || action.fieldValue;
                             actionDesc = `Set field "${action.fieldName}" to "${displayValue}"`;
@@ -6704,7 +6704,7 @@ function createActionDescription(selectedAction) {
                         break;
                     case 'observationField':
                         if (action.promptForValue) {
-                            actionDesc = `Set field "${action.fieldName}" (prompt for value)`;
+                            actionDesc = `Set field "${action.fieldName}" (will prompt for value)`;
                         } else {
                             const displayValue = action.displayValue || action.fieldValue;
                             actionDesc = `Set field "${action.fieldName}" to "${displayValue}"`;
