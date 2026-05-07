@@ -2,6 +2,9 @@
   "manifest_version": 3,
   "name": "iNaturalist Metadata Tool",
   "version": "3.0",
+  "description": "Configurable buttons and shortcuts for iNaturalist: bulk annotations, tags, fields, projects, and a URL filter builder.",
+  "author": "Adam Kranz",
+  "homepage_url": "https://github.com/Megachile/inathelperJS",
   "permissions": ["identity","activeTab", "storage", "webRequest","tabs"],
   "host_permissions": ["https://api.inaturalist.org/*", "https://www.inaturalist.org/*"],
   "action": {
