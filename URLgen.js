@@ -1,4 +1,5 @@
 let map;
+let searchLayer;
 let activeDrawTool = null;
 let tooltipsEnabled = false;
 
@@ -1053,7 +1054,6 @@ function setupMap() {
       };
       drawControl.addTo(map);
   
-      let searchLayer;
       let drawingMode = null;
       let isDrawing = false;
       let startPoint;
