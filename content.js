@@ -991,10 +991,13 @@ async function addTag(observationId, tagText) {
             return { success: true, previousTags: existingTags };
         } else {
             const errorData = await response.json().catch(() => ({}));
-            console.error('Error adding tag:', response.status, safeErrorString(errorData));
+            // iNat returns 401/403/410 for "you don't own this observation" — map to a
+            // clean message and skip the console.error since this is a fully-handled case.
+            // (The 410 body misleadingly says "That observation no longer exists.")
             if (response.status === 403 || response.status === 401 || response.status === 410) {
                 return { success: false, error: 'You can only add tags to your own observations' };
             }
+            console.error('Error adding tag:', response.status, safeErrorString(errorData));
             const rawError = errorData.error?.error || errorData.error || errorData.errors?.[0];
             const errorMsg = (typeof rawError === 'string' ? rawError : null) || `Failed to add tag (HTTP ${response.status})`;
             return { success: false, error: errorMsg };
@@ -2663,7 +2666,9 @@ function createButton(config) {
                 resultsArray.forEach(result => {
                     if (!result.success) {
                         allSuccessfulInBatch = false;
-                        console.error('Action failed:', safeErrorString(result));
+                        // The results modal at the end of the bulk flow surfaces all
+                        // failures with a clean message; this is just for debug tracing.
+                        debugLog('Action failed:', safeErrorString(result));
                         
                         if (result.action === 'addToProject' || (result.projectId && result.reason)) {
                             // Find the original project action config to get the projectName
