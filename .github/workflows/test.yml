@@ -6,6 +6,12 @@ on:
   pull_request:
     branches: [ main, dev ]
 
+# Opt into Node.js 24 for JS-based actions. checkout@v4 and setup-node@v4
+# still run on Node 20, which is being forced to Node 24 starting June 2026.
+# This silences the deprecation warning by opting in early.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 jobs:
   test:
     runs-on: ubuntu-latest
