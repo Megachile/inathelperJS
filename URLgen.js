@@ -1038,7 +1038,7 @@ function setupMap() {
       });
   
       debugLog("Adding tile layer...");
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png', {
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png', {
           attribution: '© OpenStreetMap contributors, © CARTO',
           subdomains: 'abcd',
           maxZoom: 19
