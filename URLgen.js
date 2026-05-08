@@ -1038,8 +1038,10 @@ function setupMap() {
       });
   
       debugLog("Adding tile layer...");
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-          attribution: '© OpenStreetMap contributors'
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png', {
+          attribution: '© OpenStreetMap contributors, © CARTO',
+          subdomains: 'abcd',
+          maxZoom: 19
       }).addTo(map);
   
       // Add custom controls for drawing
