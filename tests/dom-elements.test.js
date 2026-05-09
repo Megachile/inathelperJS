@@ -33,7 +33,11 @@ describe('DOM Elements Consistency Tests', () => {
             { id: 'setSelector', description: 'Configuration set selector' },
             { id: 'preventTaxonFollow', description: 'Prevent taxon auto-follow checkbox' },
             { id: 'preventFieldFollow', description: 'Prevent field auto-follow checkbox' },
-            { id: 'preventTaxonReview', description: 'Prevent taxon auto-review checkbox' }
+            { id: 'preventTaxonReview', description: 'Prevent taxon auto-review checkbox' },
+            { id: 'issueReporterType', description: 'Issue reporter type select' },
+            { id: 'issueReporterTitle', description: 'Issue reporter title input' },
+            { id: 'issueReporterBody', description: 'Issue reporter description textarea' },
+            { id: 'issueReporterSubmit', description: 'Issue reporter submit button' }
         ];
 
         criticalFields.forEach(({ id, description }) => {

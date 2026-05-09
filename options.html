@@ -651,6 +651,23 @@ button:hover {
     font-weight: 500;
     color: #1a1a1a;
 }
+
+#issueReporter .issue-reporter-row {
+    margin: 8px 0;
+}
+#issueReporter .issue-reporter-row label {
+    display: block;
+    font-weight: bold;
+    margin-bottom: 4px;
+}
+#issueReporter input[type="text"],
+#issueReporter textarea {
+    width: 100%;
+    box-sizing: border-box;
+    font-family: inherit;
+    font-size: inherit;
+    padding: 4px 6px;
+}
     </style>
 </head>
 <body>
@@ -813,6 +830,29 @@ button:hover {
     <button id="createList">Create List</button>
     <div id="existingLists"></div>
     </div>
+
+    <h2>Report an Issue or Suggest a Feature</h2>
+    <div id="issueReporter">
+        <p>Found a bug or have an idea? This opens a draft GitHub issue in a new tab pre-filled with what you write here. You can edit it before submitting. (Requires a free GitHub account.)</p>
+        <div class="issue-reporter-row">
+            <label for="issueReporterType">Type:</label>
+            <select id="issueReporterType">
+                <option value="bug">Bug report</option>
+                <option value="feature">Feature request</option>
+                <option value="question">Question</option>
+            </select>
+        </div>
+        <div class="issue-reporter-row">
+            <label for="issueReporterTitle">Title:</label>
+            <input type="text" id="issueReporterTitle" placeholder="Brief summary">
+        </div>
+        <div class="issue-reporter-row">
+            <label for="issueReporterBody">Description:</label>
+            <textarea id="issueReporterBody" rows="8" placeholder="What happened, what did you expect, what would help? Even half-formed thoughts welcome."></textarea>
+        </div>
+        <button id="issueReporterSubmit">Open pre-filled issue on GitHub</button>
+    </div>
+
     <script src="shared_api.js"></script>
     <script src="options.js"></script>
 </body>

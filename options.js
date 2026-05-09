@@ -207,9 +207,64 @@ document.addEventListener('DOMContentLoaded', function() {
         showUndoRecordsButton.addEventListener('click', showUndoRecordsModal);
     }
 
+    // Event Listener for in-extension issue reporter
+    const issueReporterSubmit = document.getElementById('issueReporterSubmit');
+    if (issueReporterSubmit) {
+        issueReporterSubmit.addEventListener('click', openIssueReporterURL);
+    }
+
     // Storage change listener (only one needed)
     browserAPI.storage.onChanged.addListener(handleStorageChangeForOptionsPage); // Ensure this is the intended single handler
-});  
+});
+
+function detectBrowserAndVersion() {
+    const ua = navigator.userAgent;
+    // Order matters: Edge claims Chrome and Safari; Brave claims Chrome.
+    const matchers = [
+        { name: 'Edge',    pattern: /Edg\/([\d.]+)/ },
+        { name: 'Firefox', pattern: /Firefox\/([\d.]+)/ },
+        { name: 'Chrome',  pattern: /Chrome\/([\d.]+)/ },
+        { name: 'Safari',  pattern: /Version\/([\d.]+).*Safari/ }
+    ];
+    for (const { name, pattern } of matchers) {
+        const m = ua.match(pattern);
+        if (m) return `${name} ${m[1]}`;
+    }
+    return ua;
+}
+
+function openIssueReporterURL() {
+    const type = document.getElementById('issueReporterType').value;
+    const title = document.getElementById('issueReporterTitle').value.trim();
+    const description = document.getElementById('issueReporterBody').value.trim();
+
+    if (!title || !description) {
+        alert('Please fill in both a title and a description before opening the issue.');
+        return;
+    }
+
+    const labelMap = { bug: 'bug', feature: 'enhancement', question: 'question' };
+    const label = labelMap[type] || '';
+
+    const extensionVersion = browserAPI.runtime.getManifest().version;
+    const browserInfo = detectBrowserAndVersion();
+
+    const body = `${description}
+
+### Environment
+- Extension version: ${extensionVersion}
+- Browser: ${browserInfo}
+
+<!-- Filed via the in-extension issue reporter on the options page. -->`;
+
+    const params = new URLSearchParams();
+    params.set('title', title);
+    params.set('body', body);
+    if (label) params.set('labels', label);
+
+    const url = `https://github.com/Megachile/inathelperJS/issues/new?${params.toString()}`;
+    browserAPI.tabs.create({ url });
+}
 
 function formatBytes(bytes, decimals = 2) {
     if (bytes === 0) return '0 Bytes';
