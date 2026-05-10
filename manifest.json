@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "iNaturalist Metadata Tool",
-  "version": "3.2",
+  "version": "3.2.1",
   "description": "Configurable buttons and shortcuts for iNaturalist: bulk annotations, tags, fields, projects, and a URL filter builder.",
   "author": "Adam Kranz",
   "homepage_url": "https://github.com/Megachile/inathelperJS",
@@ -15,7 +15,8 @@
     }
   },
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "background.js",
+    "scripts": ["background.js"]
   },
   "content_scripts": [
     {
@@ -36,7 +37,10 @@
   },
   "browser_specific_settings": {
     "gecko": {
-      "id": "ofextension@gallformers.com"
+      "id": "ofextension@gallformers.com",
+      "data_collection_permissions": {
+        "required": ["none"]
+      }
     }
   },
   "web_accessible_resources": [{

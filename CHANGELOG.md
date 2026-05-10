@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.2.1] - 2026-05-10
+
+Patch release fixing Firefox AMO submission validation. v3.2 zip failed Mozilla's static validator with one blocking error and one warning that's becoming a blocker on future submissions.
+
+### Fixed
+- Restored `background.scripts: ["background.js"]` alongside `service_worker` in `manifest.json`. Dropping `scripts` in v3.1 (#25) was correct for Chrome MV3 but broke Firefox MV3, which uses `scripts` as the source of truth. Both browsers now point at the same file; each ignores the field it doesn't use. (#34)
+- Added `browser_specific_settings.gecko.data_collection_permissions: { required: ["none"] }` to declare that the extension does not collect or transmit user data. Required by Mozilla's new built-in data-consent model for new versions going forward. (#34)
+
 ## [3.2] - 2026-05-09
 
 ### Added
@@ -51,7 +59,8 @@ First tagged release as a standalone repository. The tool itself — previously 
 
 Initial port of the existing tool from the Phenology repo into its own standalone repository. Used in unpacked / dev-install form by existing users while release-prep work was completed for 3.1.
 
-[Unreleased]: https://github.com/Megachile/inathelperJS/compare/v3.2...HEAD
+[Unreleased]: https://github.com/Megachile/inathelperJS/compare/v3.2.1...HEAD
+[3.2.1]: https://github.com/Megachile/inathelperJS/releases/tag/v3.2.1
 [3.2]: https://github.com/Megachile/inathelperJS/releases/tag/v3.2
 [3.1]: https://github.com/Megachile/inathelperJS/releases/tag/v3.1
 [3.0]: https://github.com/Megachile/inathelperJS/commit/2cd1cf8
