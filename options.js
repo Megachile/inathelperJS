@@ -1390,13 +1390,13 @@ async function displayConfigurations() {
         // Await formatted actions if formatAction is async
         const actionsHtmlPromises = config.actions.map(action => formatAction(action));
         const resolvedActionsHtml = await Promise.all(actionsHtmlPromises);
-        const actionsHtmlString = resolvedActionsHtml.map(formattedAction => `<p>${formattedAction}</p>`).join('');
+        const actionsHtmlString = resolvedActionsHtml.map(formattedAction => `<p>${escapeHtml(formattedAction)}</p>`).join('');
 
         configDiv.innerHTML = `
             <div class="config-header">
-                <input type="checkbox" class="configuration-checkbox" data-config-id="${config.id}">
-                <span class="config-name">${config.name}</span>
-                <span class="config-shortcut">${formatShortcut(config.shortcut)}</span>
+                <input type="checkbox" class="configuration-checkbox" data-config-id="${escapeHtml(config.id)}">
+                <span class="config-name">${escapeHtml(config.name)}</span>
+                <span class="config-shortcut">${escapeHtml(formatShortcut(config.shortcut))}</span>
                 <span class="toggle-details"></span> <!-- Placeholder, will be filled below -->
             </div>
             <div class="config-details" style="display: none;"> <!-- Default to none -->
@@ -1991,11 +1991,11 @@ function displayLists() {
             const listDiv = document.createElement('div');
             listDiv.className = 'list-item';
             listDiv.innerHTML = `
-                <div class="list-name">${list.name} (${list.observations.length} observations)</div>
+                <div class="list-name">${escapeHtml(list.name)} (${list.observations.length} observations)</div>
                 <div class="list-actions">
-                    <button class="viewList" data-id="${list.id}">View</button>
-                    <button class="renameList" data-id="${list.id}">Rename</button>
-                    <button class="deleteList" data-id="${list.id}">Delete</button>
+                    <button class="viewList" data-id="${escapeHtml(list.id)}">View</button>
+                    <button class="renameList" data-id="${escapeHtml(list.id)}">Rename</button>
+                    <button class="deleteList" data-id="${escapeHtml(list.id)}">Delete</button>
                 </div>
             `;
             container.appendChild(listDiv);
@@ -2593,10 +2593,10 @@ function createImportModal(importedSets) {
         
         html += `
             <div class="import-set-item" style="margin: 10px 0; padding: 10px; border: 1px solid #ccc;">
-                <h3>${set.name}</h3>
+                <h3>${escapeHtml(set.name)}</h3>
                 <p>Contains ${set.buttons.length} buttons</p>
-                ${existingSet ? 
-                    isIdentical ? 
+                ${existingSet ?
+                    isIdentical ?
                         '<p style="color: #666;">This set is identical to an existing set and will be skipped</p>' :
                         `<select id="action-${index}" class="import-action">
                             <option value="rename">Import as new set with different name</option>
@@ -2604,7 +2604,7 @@ function createImportModal(importedSets) {
                             <option value="skip">Skip this set</option>
                         </select>
                         <div id="rename-${index}" style="margin-top: 10px;">
-                            <input type="text" id="newname-${index}" value="${set.name} (New)" 
+                            <input type="text" id="newname-${index}" value="${escapeHtml(set.name)} (New)"
                                 style="width: 200px; margin-right: 10px;">
                         </div>`
                     : '<p style="color: green;">Will be imported as new set</p>'
@@ -2787,10 +2787,10 @@ function createListImportModal(importedLists, existingLists) {
         
         html += `
             <div class="import-list-item" style="margin: 10px 0; padding: 10px; border: 1px solid #ccc;">
-                <h3>${list.name}</h3>
+                <h3>${escapeHtml(list.name)}</h3>
                 <p>Contains ${list.observations.length} observations</p>
-                ${existingList ? 
-                    isIdentical ? 
+                ${existingList ?
+                    isIdentical ?
                         '<p style="color: #666;">This list is identical to an existing list and will be skipped</p>' :
                         `<select id="list-action-${index}" class="import-action">
                             <option value="rename">Import as new list with different name</option>
@@ -2798,7 +2798,7 @@ function createListImportModal(importedLists, existingLists) {
                             <option value="skip">Skip this list</option>
                         </select>
                         <div id="list-rename-${index}" style="margin-top: 10px;">
-                            <input type="text" id="list-newname-${index}" value="${list.name} (New)" 
+                            <input type="text" id="list-newname-${index}" value="${escapeHtml(list.name)} (New)"
                                 style="width: 200px; margin-right: 10px;">
                         </div>`
                     : '<p style="color: green;">Will be imported as new list</p>'

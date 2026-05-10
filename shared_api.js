@@ -1,5 +1,27 @@
 const browserAPI = typeof browser !== 'undefined' ? browser : chrome;
 
+// HTML escaping for safe interpolation into innerHTML template literals.
+// Use anywhere user-controlled or external-API data is interpolated into HTML.
+// For URL attributes (src, href) use safeUrl as well to block javascript: URIs.
+function escapeHtml(str) {
+    if (str == null) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+function safeUrl(url) {
+    if (url == null) return '';
+    try {
+        const u = new URL(String(url), 'https://www.inaturalist.org/');
+        return ['http:', 'https:'].includes(u.protocol) ? u.href : '';
+    } catch (_) {
+        return '';
+    }
+}
+
 // Debug logging — gated behind debugMode so production console stays quiet.
 // Defined here in shared_api.js so all four load contexts (content_scripts,
 // options.html, URLgen.html, and any future page) share one flag and helper.
@@ -226,11 +248,14 @@ function setupAutocompleteDropdown(inputElement, lookupFunction, onSelectFunctio
                         const suggestion = document.createElement('div');
                         suggestion.className = 'autocomplete-suggestion';
                         if (result.icon_url) {
-                            suggestion.innerHTML = `<img src="${result.icon_url}" alt="${result.login}" style="width: 30px; height: 30px; margin-right: 10px;">`;
+                            const safeIcon = safeUrl(result.icon_url);
+                            if (safeIcon) {
+                                suggestion.innerHTML = `<img src="${escapeHtml(safeIcon)}" alt="${escapeHtml(result.login)}" style="width: 30px; height: 30px; margin-right: 10px;">`;
+                            }
                         }
-                        suggestion.innerHTML += result.displayName || result.name || result.title || result.login;
+                        suggestion.innerHTML += escapeHtml(result.displayName || result.name || result.title || result.login);
                         if (result.usageCount !== undefined) {
-                            suggestion.innerHTML += ` (${result.usageCount} uses)`;
+                            suggestion.innerHTML += ` (${escapeHtml(result.usageCount)} uses)`;
                         }
                         suggestion.addEventListener('click', () => {
                             onSelectFunction(result, inputElement);
@@ -327,12 +352,14 @@ function setupTaxonAutocomplete(inputElement, idElement) {
                     taxa.forEach(taxon => {
                         const suggestion = document.createElement('div');
                         suggestion.className = 'taxonSuggestion';
+                        const safeTaxonPhoto = safeUrl(taxon.default_photo?.square_url) || 'placeholder.jpg';
+                        const safeTaxonId = encodeURIComponent(taxon.id);
                         suggestion.innerHTML = `
-                            <img src="${taxon.default_photo?.square_url || 'placeholder.jpg'}" alt="${taxon.name}">
+                            <img src="${escapeHtml(safeTaxonPhoto)}" alt="${escapeHtml(taxon.name)}">
                             <span class="taxon-name">
-                                ${taxon.preferred_common_name ? `${taxon.preferred_common_name} (` : ''}
-                                <a href="https://www.inaturalist.org/taxa/${taxon.id}" target="_blank" class="taxon-link">
-                                    ${taxon.name}
+                                ${taxon.preferred_common_name ? `${escapeHtml(taxon.preferred_common_name)} (` : ''}
+                                <a href="https://www.inaturalist.org/taxa/${safeTaxonId}" target="_blank" class="taxon-link">
+                                    ${escapeHtml(taxon.name)}
                                 </a>
                                 ${taxon.preferred_common_name ? ')' : ''}
                             </span>
@@ -1792,7 +1819,7 @@ function createProjectActionResultsModal(summary, projectName, wasRemoval = fals
         contentHTML += `
             <div style="margin: 15px 0;">
                 <h3>Project Action Successful (${fullySuccessfulObs.length} observations)</h3>
-                <p>The configured actions, including ${wasRemoval ? 'removal from' : 'addition to'} project "${projectName}", fully succeeded for:</p>
+                <p>The configured actions, including ${wasRemoval ? 'removal from' : 'addition to'} project "${escapeHtml(projectName)}", fully succeeded for:</p>
                 <div class="observation-list">
                     ${generateObservationList(fullySuccessfulObs)}
                 </div>
@@ -1828,10 +1855,10 @@ function createProjectActionResultsModal(summary, projectName, wasRemoval = fals
                 <ul>
                     ${purelySkippedObsDetails.map(skipped => `
                         <li>
-                            <a href="https://www.inaturalist.org/observations/${skipped.observationId}" 
+                            <a href="https://www.inaturalist.org/observations/${encodeURIComponent(skipped.observationId)}"
                                target="_blank" style="color: #0077cc; text-decoration: underline;">
-                                Observation ${skipped.observationId}
-                            </a>: ${skipped.message || 'No action needed'} (${skipped.reason || 'Skipped'})
+                                Observation ${escapeHtml(skipped.observationId)}
+                            </a>: ${escapeHtml(skipped.message || 'No action needed')} (${escapeHtml(skipped.reason || 'Skipped')})
                         </li>
                     `).join('')}
                 </ul>
@@ -1849,10 +1876,10 @@ function createProjectActionResultsModal(summary, projectName, wasRemoval = fals
                 <ul>
                     ${summary.warnings.map(warning => `
                         <li>
-                            <a href="https://www.inaturalist.org/observations/${warning.observationId}" 
+                            <a href="https://www.inaturalist.org/observations/${encodeURIComponent(warning.observationId)}"
                                target="_blank" style="color: #0077cc; text-decoration: underline;">
-                                Observation ${warning.observationId}
-                            </a>: ${warning.message}
+                                Observation ${escapeHtml(warning.observationId)}
+                            </a>: ${escapeHtml(warning.message)}
                             ${warning.reason === 'dynamic_inclusion' ? ' (Automatically included by project rules)' : ''}
                             ${warning.reason === 'permission_denied' ? ' (Insufficient permissions)' : ''}
                             ${partiallySuccessfulObsIds.includes(warning.observationId) ? ' <strong style="color: #00897b;">(Also listed under Partial Success)</strong>' : ''}
@@ -1875,19 +1902,19 @@ function createProjectActionResultsModal(summary, projectName, wasRemoval = fals
             <div style="margin: 15px 0; padding: 10px; background: #ffeded; border-radius: 4px;">
                 <h3>Project Action Failed (${failuresToList.length} observations)</h3>
                  <p>The project addition/removal action failed for these observations:</p>
-                <p><a href="${IDENTIFY_PAGE_URL}&id=${failuresToList.map(f => f.observationId).join(',')}" 
+                <p><a href="${IDENTIFY_PAGE_URL}&id=${failuresToList.map(f => encodeURIComponent(f.observationId)).join(',')}"
                       target="_blank" style="color: #0077cc; text-decoration: underline;">
                     View these observations
                 </a></p>
                 <ul>
                     ${failuresToList.map(failure => `
                         <li>
-                            <a href="https://www.inaturalist.org/observations/${failure.observationId}" 
+                            <a href="https://www.inaturalist.org/observations/${encodeURIComponent(failure.observationId)}"
                                target="_blank" style="color: #0077cc; text-decoration: underline;">
-                                Observation ${failure.observationId}
-                            </a>: 
-                            ${getCleanErrorMessage(failure.message)}
-                            ${failure.reason ? `(${failure.reason})` : ''}
+                                Observation ${escapeHtml(failure.observationId)}
+                            </a>:
+                            ${escapeHtml(getCleanErrorMessage(failure.message))}
+                            ${failure.reason ? `(${escapeHtml(failure.reason)})` : ''}
                             ${partiallySuccessfulObsIds.includes(failure.observationId) ? ' <strong style="color: #00897b;">(Also listed under Partial Success)</strong>' : ''}
                         </li>
                     `).join('')}
@@ -2022,7 +2049,7 @@ function createDetailedActionResultsModal(summaryByActionType, actionSetName, sk
         max-width: 80%; max-height: 80%; overflow-y: auto; font-size: 14px;
     `;
 
-    let contentHTML = `<h2 style="margin-top:0;">Results for: "${actionSetName}"</h2>`;
+    let contentHTML = `<h2 style="margin-top:0;">Results for: "${escapeHtml(actionSetName)}"</h2>`;
 
     const pluralize = (count, singular, plural = null) => {
         if (plural === null) plural = singular + 's';
@@ -2035,7 +2062,7 @@ function createDetailedActionResultsModal(summaryByActionType, actionSetName, sk
             <div style="margin: 15px 0; padding: 10px; background: #fff8e1; border: 1px solid #ffecb3; border-radius: 4px;">
                 <h4>Skipped by Safe Mode (<a href="${generateObservationURL(uniqueSkippedIds)}" target="_blank" style="color: #4caf50; text-decoration: underline;">${uniqueSkippedIds.length} ${pluralize(uniqueSkippedIds.length, "observation")}</a>)</h4>
                 <p>These observations were skipped entirely because at least one 'Observation Field' action would have overwritten an existing value, and Safe Mode is ON.</p>
-                ${uniqueSkippedIds.length <= 15 && uniqueSkippedIds.length > 0 ? `<ul>${uniqueSkippedIds.map(id => `<li><a href="https://www.inaturalist.org/observations/${id}" target="_blank">${id}</a></li>`).join('')}</ul>` : ''}
+                ${uniqueSkippedIds.length <= 15 && uniqueSkippedIds.length > 0 ? `<ul>${uniqueSkippedIds.map(id => `<li><a href="https://www.inaturalist.org/observations/${encodeURIComponent(id)}" target="_blank">${escapeHtml(id)}</a></li>`).join('')}</ul>` : ''}
             </div>`;
     }
     
@@ -2047,9 +2074,9 @@ function createDetailedActionResultsModal(summaryByActionType, actionSetName, sk
                 <p>The following observation field values were overwritten (Overwrite Mode was ON):</p>
                 <div style="max-height: 150px; overflow-y: auto;"><ul>`;
         for (const [obsId, fields] of Object.entries(overwrittenValues)) {
-            contentHTML += `<li><a href="https://www.inaturalist.org/observations/${obsId}" target="_blank">${obsId}</a>:<ul>`;
+            contentHTML += `<li><a href="https://www.inaturalist.org/observations/${encodeURIComponent(obsId)}" target="_blank">${escapeHtml(obsId)}</a>:<ul>`;
             for (const [fieldName, change] of Object.entries(fields)) {
-                contentHTML += `<li>"${fieldName}": from "${change.oldValue}" to "${change.newValue}"</li>`;
+                contentHTML += `<li>"${escapeHtml(fieldName)}": from "${escapeHtml(change.oldValue)}" to "${escapeHtml(change.newValue)}"</li>`;
             }
             contentHTML += `</ul></li>`;
         }
@@ -2060,7 +2087,7 @@ function createDetailedActionResultsModal(summaryByActionType, actionSetName, sk
         const actionSummary = summaryByActionType[actionKey];
         const { actionConfig, success, failed, skipped, warnings } = actionSummary;
 
-        let actionDisplayName = actionConfig.type; 
+        let actionDisplayName = actionConfig.type;
         if (actionConfig.type === 'observationField') {
             actionDisplayName = `Set Field: "${actionConfig.fieldName || actionConfig.fieldId}" to "${actionConfig.displayValue || actionConfig.fieldValue}"`;
         } else if (actionConfig.type === 'addToProject') {
@@ -2090,7 +2117,7 @@ function createDetailedActionResultsModal(summaryByActionType, actionSetName, sk
         }
 
         contentHTML += `<div style="margin-bottom: 20px; padding: 10px; border: 1px solid #eee; border-radius: 4px;">`;
-        contentHTML += `<h4 style="margin-top:0; margin-bottom: 10px; color: #333;">Action: ${actionDisplayName}</h4>`;
+        contentHTML += `<h4 style="margin-top:0; margin-bottom: 10px; color: #333;">Action: ${escapeHtml(actionDisplayName)}</h4>`;
 
         if (success.length > 0) {
             const uniqueSuccessIds = [...new Set(success.map(s => s.observationId))];
@@ -2104,7 +2131,7 @@ function createDetailedActionResultsModal(summaryByActionType, actionSetName, sk
                 contentHTML += `<p style="color: red;">Failed for <a href="${generateObservationURL(uniqueFailedIds)}" target="_blank" style="color: red; text-decoration: underline;">${uniqueFailedIds.length} ${pluralize(uniqueFailedIds.length, "observation")}</a>:</p>`;
                 contentHTML += `<div style="max-height: 150px; overflow-y: auto;"><ul>`;
                 actualFailures.forEach(f => {
-                    contentHTML += `<li><a href="https://www.inaturalist.org/observations/${f.observationId}" target="_blank">${f.observationId}</a>: ${getCleanErrorMessage(f.message || f.error)} ${f.reason && f.reason !== 'safe_mode_skip' ? `(${f.reason})` : ''}</li>`;
+                    contentHTML += `<li><a href="https://www.inaturalist.org/observations/${encodeURIComponent(f.observationId)}" target="_blank">${escapeHtml(f.observationId)}</a>: ${escapeHtml(getCleanErrorMessage(f.message || f.error))} ${f.reason && f.reason !== 'safe_mode_skip' ? `(${escapeHtml(f.reason)})` : ''}</li>`;
                 });
                 contentHTML += `</ul></div>`;
             }
@@ -2118,7 +2145,7 @@ function createDetailedActionResultsModal(summaryByActionType, actionSetName, sk
                 const displayedSkippedReasons = new Map();
                 skipped.forEach(s => {
                     if (!displayedSkippedReasons.has(s.observationId)) {
-                        contentHTML += `<li><a href="https://www.inaturalist.org/observations/${s.observationId}" target="_blank">${s.observationId}</a>: ${s.message || 'No specific message'} ${s.reason ? `(${s.reason})` : ''}</li>`;
+                        contentHTML += `<li><a href="https://www.inaturalist.org/observations/${encodeURIComponent(s.observationId)}" target="_blank">${escapeHtml(s.observationId)}</a>: ${escapeHtml(s.message || 'No specific message')} ${s.reason ? `(${escapeHtml(s.reason)})` : ''}</li>`;
                         displayedSkippedReasons.set(s.observationId, true);
                     }
                 });
@@ -2132,9 +2159,9 @@ function createDetailedActionResultsModal(summaryByActionType, actionSetName, sk
              if (uniqueWarningIds.length <= 10 && uniqueWarningIds.length > 0) { 
                 contentHTML += `<div style="max-height: 100px; overflow-y: auto;"><ul>`;
                 const displayedWarningReasons = new Map();
-                warnings.forEach(w => { 
+                warnings.forEach(w => {
                      if (!displayedWarningReasons.has(w.observationId)) {
-                        contentHTML += `<li><a href="https://www.inaturalist.org/observations/${w.observationId}" target="_blank">${w.observationId}</a>: ${w.message || 'No specific message'} ${w.reason ? `(${w.reason})` : ''}</li>`;
+                        contentHTML += `<li><a href="https://www.inaturalist.org/observations/${encodeURIComponent(w.observationId)}" target="_blank">${escapeHtml(w.observationId)}</a>: ${escapeHtml(w.message || 'No specific message')} ${w.reason ? `(${escapeHtml(w.reason)})` : ''}</li>`;
                         displayedWarningReasons.set(w.observationId, true);
                      }
                 });
@@ -2153,7 +2180,7 @@ function createDetailedActionResultsModal(summaryByActionType, actionSetName, sk
         contentHTML += `
             <div style="margin: 15px 0; padding: 10px; background: #fff1f0; border: 1px solid #ffcccb; border-radius: 4px;">
                 <h4>Overall Errors Encountered:</h4>
-                <ul>${generalErrorMessages.map(err => `<li>${err}</li>`).join('')}</ul>
+                <ul>${generalErrorMessages.map(err => `<li>${escapeHtml(err)}</li>`).join('')}</ul>
             </div>`;
     }
 

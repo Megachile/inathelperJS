@@ -1490,7 +1490,7 @@ function createOrUpdateIdDisplay(id) {
         updatePositions();
     }
     
-    idDisplay.innerHTML = `Current Observation ID: ${id}`;
+    idDisplay.textContent = `Current Observation ID: ${id}`;
     idDisplay.style.display = 'block'; // Ensure it's visible
     
     // Add refresh indicator if it doesn't exist
@@ -1736,9 +1736,9 @@ function showFieldPromptModal(fieldName, fieldDatatype, fieldAllowedValues, defa
                             const nameDiv = document.createElement('div');
                             nameDiv.style.cssText = 'flex: 1;';
                             if (taxon.preferred_common_name) {
-                                nameDiv.innerHTML = `<div style="font-weight:bold;">${taxon.preferred_common_name}</div><div style="color:#666;font-style:italic;">${taxon.name}</div>`;
+                                nameDiv.innerHTML = `<div style="font-weight:bold;">${escapeHtml(taxon.preferred_common_name)}</div><div style="color:#666;font-style:italic;">${escapeHtml(taxon.name)}</div>`;
                             } else {
-                                nameDiv.innerHTML = `<div style="font-style:italic;">${taxon.name}</div>`;
+                                nameDiv.innerHTML = `<div style="font-style:italic;">${escapeHtml(taxon.name)}</div>`;
                             }
                             item.appendChild(nameDiv);
 
@@ -4411,15 +4411,15 @@ function createActionResultsModal(results, skippedCount, skippedURL, overwritten
         Object.entries(overwrittenDetails).forEach(([observationId, fields]) => { // Changed from 'details' to 'fields'
             contentHTML += `
                 <li>
-                    <a href="https://www.inaturalist.org/observations/${observationId}" 
-                       target="_blank" 
+                    <a href="https://www.inaturalist.org/observations/${encodeURIComponent(observationId)}"
+                       target="_blank"
                        style="color: #0077cc; text-decoration: underline;">
-                        Observation ${observationId}
+                        Observation ${escapeHtml(observationId)}
                     </a>:
                     <ul>
             `;
             Object.entries(fields).forEach(([fieldName, values]) => { // Changed from 'details' to 'values'
-                contentHTML += `<li>"${fieldName}": from "${values.oldValue}" to "${values.newValue}"</li>`;
+                contentHTML += `<li>"${escapeHtml(fieldName)}": from "${escapeHtml(values.oldValue)}" to "${escapeHtml(values.newValue)}"</li>`;
             });
             contentHTML += `</ul></li>`;
         });
@@ -4431,7 +4431,7 @@ function createActionResultsModal(results, skippedCount, skippedURL, overwritten
             <div style="margin: 15px 0; padding: 10px; background: #fff8e1; border: 1px solid #ffecb3; border-radius: 4px;">
                 <h4>Observations Skipped by Safe Mode (${skippedCount})</h4>
                 <p>
-                    <a class="modal-link" href="${skippedURL}" target="_blank" style="color: #4caf50; text-decoration: underline;">
+                    <a class="modal-link" href="${escapeHtml(safeUrl(skippedURL))}" target="_blank" style="color: #4caf50; text-decoration: underline;">
                         View ${skippedCount} skipped ${pluralizeLocal(skippedCount, "observation")}
                     </a>
                 </p>
@@ -4446,7 +4446,7 @@ function createActionResultsModal(results, skippedCount, skippedURL, overwritten
                 <h4>Failed Actions (${actualFailures.length})</h4>
                 <div style="max-height: 150px; overflow-y: auto;"><ul>`;
         actualFailures.forEach(f => {
-             contentHTML += `<li>Obs. <a href="https.www.inaturalist.org/observations/${f.observationId}" target="_blank">${f.observationId}</a> (Action: ${f.action || 'Unknown'}): ${getCleanErrorMessage(f.message || f.error)} ${f.reason ? `(${f.reason})` : ''}</li>`;
+             contentHTML += `<li>Obs. <a href="https://www.inaturalist.org/observations/${encodeURIComponent(f.observationId)}" target="_blank">${escapeHtml(f.observationId)}</a> (Action: ${escapeHtml(f.action || 'Unknown')}): ${escapeHtml(getCleanErrorMessage(f.message || f.error))} ${f.reason ? `(${escapeHtml(f.reason)})` : ''}</li>`;
         });
         contentHTML += `</ul></div></div>`;
     }
@@ -4455,7 +4455,7 @@ function createActionResultsModal(results, skippedCount, skippedURL, overwritten
         contentHTML += `
             <div style="margin: 15px 0; padding: 10px; background: #fff1f0; border: 1px solid #ffcccb; border-radius: 4px;">
                 <h4>Overall Errors Encountered:</h4>
-                <ul>${errorMessages.map(err => `<li>${err}</li>`).join('')}</ul>
+                <ul>${errorMessages.map(err => `<li>${escapeHtml(err)}</li>`).join('')}</ul>
             </div>`;
     }
     
@@ -5053,7 +5053,7 @@ function updateActionDescription(actionSelect) {
                         break;
                 }
                 if (actionDesc) {
-                    descriptionHTML += `<li>${actionDesc}</li>`;
+                    descriptionHTML += `<li>${escapeHtml(actionDesc)}</li>`;
                 }
             });
             descriptionHTML += '</ul>';
@@ -5209,7 +5209,7 @@ function createErrorModal(errorMessages) {
         <h2>Bulk Action Errors</h2>
         <p>${errorMessages.length} errors occurred during execution:</p>
         <ul>
-            ${errorMessages.map(error => `<li>${error}</li>`).join('')}
+            ${errorMessages.map(error => `<li>${escapeHtml(error)}</li>`).join('')}
         </ul>
         <button id="closeModal" class="modal-button">Close</button>
     `;
@@ -5573,10 +5573,10 @@ async function createTooltipContent(fieldValues, selectedAction) {
 
         content += `
             <div class="tooltip-field">
-                <div class="tooltip-field-name">${fieldName}</div>
+                <div class="tooltip-field-name">${escapeHtml(fieldName)}</div>
                 <div class="tooltip-value">
-                    <span class="tooltip-current">Current: "${currentDisplay}"</span>
-                    <span class="tooltip-proposed">Will change to: "${proposedDisplay}"</span>
+                    <span class="tooltip-current">Current: "${escapeHtml(currentDisplay)}"</span>
+                    <span class="tooltip-proposed">Will change to: "${escapeHtml(proposedDisplay)}"</span>
                 </div>
             </div>
         `;
@@ -6278,7 +6278,7 @@ async function createValidationModal(validationResults, selectedAction, onConfir
 
     actionDescription.innerHTML = `
         <h3 style="margin-top: 0; margin-bottom: 10px; color: #1a73e8;">
-            Action: ${selectedAction.name}
+            Action: ${escapeHtml(selectedAction.name)}
         </h3>
         <div style="color: #202124;">
             ${selectedAction.actions.map(action => {
@@ -6327,7 +6327,7 @@ async function createValidationModal(validationResults, selectedAction, onConfir
                 return actionDesc ? `
                     <div style="margin: 8px 0; padding-left: 20px; position: relative;">
                         <span style="position: absolute; left: 8px; color: #1a73e8;">•</span>
-                        ${actionDesc}
+                        ${escapeHtml(actionDesc)}
                     </div>` : '';
             }).join('')}
         </div>
@@ -6361,27 +6361,27 @@ async function createValidationModal(validationResults, selectedAction, onConfir
                     const item = document.createElement('div');
                     item.style.marginBottom = '10px';
                     item.innerHTML = `
-                        <a href="https://www.inaturalist.org/observations/${observationId}" 
-                           target="_blank" 
+                        <a href="https://www.inaturalist.org/observations/${encodeURIComponent(observationId)}"
+                           target="_blank"
                            style="color: #0077cc;">
-                            Observation ${observationId}
+                            Observation ${escapeHtml(observationId)}
                         </a>:
                         <ul style="margin: 5px 0; padding-left: 20px;">
                     `;
-                    
+
                     Object.entries(existingFields).forEach(([fieldId, value]) => {
                         const fieldName = validationResults.fieldNames.get(fieldId);
                         const actionItemForField = selectedAction.actions.find(
                             act => act.type === 'observationField' && act.fieldId === fieldId
                         );
-                        const proposedDisplayValue = (actionItemForField && actionItemForField.displayValue) ? 
-                                                      actionItemForField.displayValue : 
+                        const proposedDisplayValue = (actionItemForField && actionItemForField.displayValue) ?
+                                                      actionItemForField.displayValue :
                                                       validationResults.proposedValues.get(fieldId);
                         item.innerHTML += `
-                            <li>${fieldName}: 
-                                <span style="color: #666;">"${value}"</span>
+                            <li>${escapeHtml(fieldName)}:
+                                <span style="color: #666;">"${escapeHtml(value)}"</span>
                                 <span style="color: #999;"> (would be set to </span>
-                                <span style="color: #666;">"${proposedDisplayValue}"</span>
+                                <span style="color: #666;">"${escapeHtml(proposedDisplayValue)}"</span>
                                 <span style="color: #999;">)</span>
                             </li>
                         `;
@@ -6406,6 +6406,7 @@ async function createValidationModal(validationResults, selectedAction, onConfir
                 <p><strong>Overwrite Mode is ON</strong></p>
                 <p style="color: red;">Warning: This will overwrite existing values in ${validationResults.existingValues.size} observations:</p>
             `;
+            // Note: validationResults.existingValues.size is a number, safe to interpolate.
 
             const overwriteList = document.createElement('div');
             overwriteList.style.cssText = `
@@ -6422,35 +6423,35 @@ async function createValidationModal(validationResults, selectedAction, onConfir
                 const item = document.createElement('div');
                 item.style.marginBottom = '10px';
                 item.innerHTML = `
-                    <a href="https://www.inaturalist.org/observations/${observationId}" 
-                       target="_blank" 
+                    <a href="https://www.inaturalist.org/observations/${encodeURIComponent(observationId)}"
+                       target="_blank"
                        style="color: #0077cc;">
-                        Observation ${observationId}
+                        Observation ${escapeHtml(observationId)}
                     </a>:
                     <ul style="margin: 5px 0; padding-left: 20px;">
                 `;
-                
+
                 Object.entries(info.existingFields).forEach(([fieldId, valueDetails]) => { // valueDetails is {current, proposed}
                     const fieldName = validationResults.fieldNames.get(fieldId); // fieldId here is the key from info.existingFields
 
                     // --- NEW LOG ---
-                    debugLog(`CREATE_VALIDATION_MODAL: Obs ${observationId}, Field ID ${fieldId} (${fieldName || 'Unknown Name'}), valueDetails.current:`, 
-                        valueDetails.current, 
+                    debugLog(`CREATE_VALIDATION_MODAL: Obs ${observationId}, Field ID ${fieldId} (${fieldName || 'Unknown Name'}), valueDetails.current:`,
+                        valueDetails.current,
                         `(Type: ${typeof valueDetails.current})`);
                     debugLog(`CREATE_VALIDATION_MODAL: Obs ${observationId}, Field ID ${fieldId} (${fieldName || 'Unknown Name'}), valueDetails.proposed:`,
                         valueDetails.proposed,
                         `(Type: ${typeof valueDetails.proposed})`);
                     // --- END NEW LOG ---
-                    
+
                     item.innerHTML += `
-                        <li>${fieldName || `Field ID ${fieldId}`}: 
-                            <span style="color: #666;">"${String(valueDetails.current)}"</span> 
+                        <li>${escapeHtml(fieldName || `Field ID ${fieldId}`)}:
+                            <span style="color: #666;">"${escapeHtml(String(valueDetails.current))}"</span>
                             <span style="color: #999;"> → </span>
-                            <span style="color: #666;">"${String(valueDetails.proposed)}"</span>
+                            <span style="color: #666;">"${escapeHtml(String(valueDetails.proposed))}"</span>
                         </li>
                     `;
                 });
-                
+
                 item.innerHTML += '</ul>';
                 overwriteList.appendChild(item);
             }
@@ -6688,7 +6689,7 @@ function createActionDescription(selectedAction) {
     `;
 
     container.innerHTML = `
-        <h3 style="margin-top: 0; margin-bottom: 10px; color: #1a73e8;">Action: ${selectedAction.name}</h3>
+        <h3 style="margin-top: 0; margin-bottom: 10px; color: #1a73e8;">Action: ${escapeHtml(selectedAction.name)}</h3>
         <div class="action-details" style="color: #202124;">
             ${selectedAction.actions.map(action => {
                 let actionDesc = '';
@@ -6743,7 +6744,7 @@ function createActionDescription(selectedAction) {
                             left: 8px;
                             color: #1a73e8;
                         ">•</span>
-                        ${actionDesc}
+                        ${escapeHtml(actionDesc)}
                     </div>` : '';
             }).join('')}
         </div>

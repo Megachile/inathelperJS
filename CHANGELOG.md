@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.2.2] - 2026-05-10
+
+Patch release hardening innerHTML usage flagged by Mozilla AMO's static validator. v3.2.1 passed AMO validation with 0 errors but 49 innerHTML warnings, which AMO's reviewer-facing checklist warns can lead to manual rejection. This release audits every flagged location and applies defensive escaping.
+
+### Added
+- `escapeHtml(str)` helper in `shared_api.js` — escapes `& < > " '` for safe interpolation into innerHTML template literals.
+- `safeUrl(url)` helper in `shared_api.js` — validates that a URL uses http/https; returns empty string for `javascript:` or other unsafe schemes (defense for `<img src>` and `<a href>` attributes).
+
+### Fixed (security hardening, no functional change)
+- **Configuration list rendering** (#35) — `${config.name}` and `${config.id}` (user-supplied via the options page) are now escaped when rendered in the configurations display. (`options.js`)
+- **Personal lists rendering** (#35) — `${list.name}` and `${list.id}` are now escaped. (`options.js`)
+- **Import modals** (#35) — `${set.name}` and `${list.name}` from user-imported JSON files are now escaped. This was the most exploitable surface: a malicious .json shared with users could have injected scripts on import. (`options.js`)
+- **Autocomplete suggestions** (#35) — user logins, display names, and icon URLs from iNaturalist API responses are now escaped/validated before insertion. (`shared_api.js`)
+- **Taxon suggestion HTML** (#35) — `${taxon.name}`, `${taxon.preferred_common_name}`, and photo URLs are escaped/validated. (`shared_api.js`)
+- **Action result modals** (#35) — observation IDs, error messages, action descriptions, and field values that flow into result modals are now escaped. (`shared_api.js`, `content.js`)
+- **Bulk-action validation modal** (#35) — observation IDs, field names, current/proposed values are escaped in the pre-action confirmation modal. (`content.js`)
+- **Tooltip content** (#35) — field names and values shown in field-conflict tooltips are escaped. (`content.js`)
+- **Action description preview** (#35) — the dynamic action descriptions on the bulk-action page escape user-controlled fields (project name, taxon name, comment body, tag text, etc.) before display. (`content.js`)
+- **Bulk Action Errors modal** (#35) — error messages are escaped. (`content.js`)
+
+### Note
+The 49 `innerHTML` warnings will still appear in Mozilla's static-analysis report — the validator flags every `.innerHTML =` site regardless of whether interpolated values are escaped. The change is in the *content* of what flows through those sites: all user-controlled and external-API data is now `escapeHtml`-wrapped, with URL attributes additionally `safeUrl`-validated. 7 of the 49 warnings remain in `leaflet.js` (third-party, vendored).
+
 ## [3.2.1] - 2026-05-10
 
 Patch release fixing Firefox AMO submission validation. v3.2 zip failed Mozilla's static validator with one blocking error and one warning that's becoming a blocker on future submissions.
@@ -59,7 +82,8 @@ First tagged release as a standalone repository. The tool itself — previously 
 
 Initial port of the existing tool from the Phenology repo into its own standalone repository. Used in unpacked / dev-install form by existing users while release-prep work was completed for 3.1.
 
-[Unreleased]: https://github.com/Megachile/inathelperJS/compare/v3.2.1...HEAD
+[Unreleased]: https://github.com/Megachile/inathelperJS/compare/v3.2.2...HEAD
+[3.2.2]: https://github.com/Megachile/inathelperJS/releases/tag/v3.2.2
 [3.2.1]: https://github.com/Megachile/inathelperJS/releases/tag/v3.2.1
 [3.2]: https://github.com/Megachile/inathelperJS/releases/tag/v3.2
 [3.1]: https://github.com/Megachile/inathelperJS/releases/tag/v3.1
