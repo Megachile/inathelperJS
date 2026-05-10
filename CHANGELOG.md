@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.2.3] - 2026-05-10
+
+Patch release eliminating a third-party CDN dependency discovered during the Chrome Web Store submission pass.
+
+### Removed
+- The remote stylesheet link to `cdnjs.cloudflare.com/ajax/libs/font-awesome/...` previously included by `URLgen.html`. FontAwesome was used only for two draw-control icons on the URL filter generator's map (`fa-square-o`, `fa-circle-o`) and was loading from a CDN at runtime — meaning Cloudflare saw users' IPs every time URLgen.html opened. This contradicted the privacy policy's claim of no third-party hosts beyond iNaturalist (and GitHub for explicit issue-reporter clicks). Now removed.
+
+### Changed
+- The two draw-control icons are now inline SVGs in `URLgen.js`, using `currentColor` so they inherit the surrounding link color. Zero additional payload; no remote loads; no font files.
+
+### Note
+References to `.fa-*` classes in `content.js` are unchanged — they query iNaturalist's own page DOM (iNat already loads FontAwesome on its pages) and never required us to ship the library.
+
 ## [3.2.2] - 2026-05-10
 
 Patch release hardening innerHTML usage flagged by Mozilla AMO's static validator. v3.2.1 passed AMO validation with 0 errors but 49 innerHTML warnings, which AMO's reviewer-facing checklist warns can lead to manual rejection. This release audits every flagged location and applies defensive escaping.
@@ -82,7 +95,8 @@ First tagged release as a standalone repository. The tool itself — previously 
 
 Initial port of the existing tool from the Phenology repo into its own standalone repository. Used in unpacked / dev-install form by existing users while release-prep work was completed for 3.1.
 
-[Unreleased]: https://github.com/Megachile/inathelperJS/compare/v3.2.2...HEAD
+[Unreleased]: https://github.com/Megachile/inathelperJS/compare/v3.2.3...HEAD
+[3.2.3]: https://github.com/Megachile/inathelperJS/releases/tag/v3.2.3
 [3.2.2]: https://github.com/Megachile/inathelperJS/releases/tag/v3.2.2
 [3.2.1]: https://github.com/Megachile/inathelperJS/releases/tag/v3.2.1
 [3.2]: https://github.com/Megachile/inathelperJS/releases/tag/v3.2

@@ -1048,9 +1048,15 @@ function setupMap() {
       const drawControl = L.control({position: 'topright'});
       drawControl.onAdd = function(map) {
           const container = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
+          // Inline SVG icons replace FontAwesome (eliminates a remote CDN dependency).
+          // currentColor inherits the link color so they match Leaflet's control styling.
           container.innerHTML = `
-              <a href="#" id="drawRectangle" title="Draw Rectangle"><i class="fa fa-square-o"></i></a>
-              <a href="#" id="drawCircle" title="Draw Circle"><i class="fa fa-circle-o"></i></a>
+              <a href="#" id="drawRectangle" title="Draw Rectangle" style="display:flex;align-items:center;justify-content:center;">
+                  <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><rect x="1" y="1" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
+              </a>
+              <a href="#" id="drawCircle" title="Draw Circle" style="display:flex;align-items:center;justify-content:center;">
+                  <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="5.5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
+              </a>
           `;
           return container;
       };
