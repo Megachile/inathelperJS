@@ -16,8 +16,8 @@ Configuration lives on the options page. Multiple "configuration sets" let you s
 
 ## Installation
 
-- **Chrome / Edge / Brave:** [Chrome Web Store](#) <!-- TODO: fill in URL once #21 ships -->
-- **Firefox:** [Firefox Add-ons (AMO)](#) <!-- TODO: fill in URL once #21 ships -->
+- **Chrome / Edge / Brave:** [Chrome Web Store](https://chromewebstore.google.com/detail/inaturalist-metadata-tool/kgnajdmgemhinploocjifefdcbomdfph)
+- **Firefox:** [Firefox Add-ons (AMO)](https://addons.mozilla.org/en-US/firefox/addon/inaturalist-metadata-tool/)
 
 ## Getting started
 
