@@ -124,7 +124,8 @@ const controlledTerms = {
 };
 
 let currentJWT = null;
-const API_URL = 'https://api.inaturalist.org/v1';
+const API_BASE = 'https://api.inaturalist.org';
+const API_URL = `${API_BASE}/v1`;
 // Standard identify-page query string used for "review these observations" deep links.
 // Includes all quality grades / review states / verifiability / places so the resulting
 // URL surfaces every observation in the supplied id list.
@@ -1101,7 +1102,9 @@ async function makeAPIRequest(endpoint, options = {}) {
         ...options.headers,
         'Authorization': `Bearer ${jwt}`
     };
-    let fullUrl = `${API_URL}${endpoint}`;
+    // Endpoints starting with /v2/ bypass the v1 prefix (used for selective-fields reads
+    // that v1 doesn't support). Everything else stays on v1.
+    let fullUrl = endpoint.startsWith('/v2/') ? `${API_BASE}${endpoint}` : `${API_URL}${endpoint}`;
     if (options.method === 'DELETE') {
         fullUrl += '?delete=true';
     }

@@ -3930,8 +3930,13 @@ async function generatePreActionStates(observationIds, checkCancelled, modal, ac
     const needsSubscriptions = actions.some(a => a.type === 'follow');
 
     // Retry/backoff on 429 is now handled centrally by makeAPIRequest.
-    // Fetch observations in batches using the API's multi-ID support
-    const batchSize = 30; // API supports up to 30 IDs per request
+    // Fetch observations in batches using the v2 search endpoint with selective fields.
+    // v2 accepts up to 200 IDs per request (matching the identify-page per_page cap), and
+    // the selective fields cut payload ~50x vs v1's full-obs response since downstream code
+    // only reads id/uuid/identifications/ofvs/project_observations/reviewed_by.
+    const batchSize = 200;
+    const fieldsParam = '(id:!t,uuid:!t,identifications:(id:!t,uuid:!t,user:(id:!t),current:!t,taxon:(id:!t,name:!t),created_at:!t),ofvs:!t,project_observations:!t,reviewed_by:!t)';
+    const encodedFields = encodeURIComponent(fieldsParam);
     for (let i = 0; i < observationIds.length; i += batchSize) {
         // Check for cancellation
         if (checkCancelled && checkCancelled()) {
@@ -3949,7 +3954,7 @@ async function generatePreActionStates(observationIds, checkCancelled, modal, ac
 
         try {
             // Fetch all observations in this batch with a single API call
-            const obsData = await makeAPIRequest(`/observations/${idsParam}`);
+            const obsData = await makeAPIRequest(`/v2/observations?id=${idsParam}&per_page=${batchSize}&fields=${encodedFields}`);
 
             // Store each observation's data
             for (const obs of obsData.results) {
@@ -3990,7 +3995,7 @@ async function generatePreActionStates(observationIds, checkCancelled, modal, ac
 
         // Add delay between batches (not needed as much with batch fetching, but still good practice)
         if (i + batchSize < observationIds.length) {
-            await delay(500); // 500ms between batches of 30
+            await delay(500); // inter-batch delay; with batchSize=200 normally unreached
         }
     }
 
