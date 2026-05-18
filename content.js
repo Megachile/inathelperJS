@@ -6821,10 +6821,13 @@ async function handleFollowAndReviewPrevention(observationId, actions, results) 
 
 async function handleStateRestoration(observationId, actions, results, originalStates) {
     if (results.every(r => r.success)) {
+        const { originalFollowState, originalReviewState } = originalStates;
+        // Skip the auto-action settle wait when nothing was captured to restore —
+        // annotation-only bulks were paying 500ms per obs for a no-op check.
+        if (originalFollowState === null && originalReviewState === null) return;
+
         debugLog('Actions completed successfully, checking states...');
         await delay(500); // Wait for iNat's auto-actions to take effect
-
-        const { originalFollowState, originalReviewState } = originalStates;
 
         // Follow check
         if (originalFollowState !== null) {
