@@ -1884,7 +1884,7 @@ function showFieldPromptModal(fieldName, fieldDatatype, fieldAllowedValues, defa
     });
 }
 
-async function performSingleAction(action, observationId, isIdentifyPage) {
+async function performSingleAction(action, observationId) {
     switch (action.type) {
         case 'follow':
             const followState = await makeAPIRequest(`/observations/${observationId}/subscriptions`);
@@ -3678,11 +3678,7 @@ async function executeBulkAction(selectedActionConfig, modal, isCancelledFunc) {
                             }
                         }
                     } else {
-                        actionResult = await performSingleAction(
-                            action,
-                            observationId,
-                            preActionStates[observationId] // Pass pre-action state for this specific observation
-                        );
+                        actionResult = await performSingleAction(action, observationId);
                         // Update undo record with result-specific data for addTag
                         if (action.type === 'addTag' && actionResult.success && actionResult.previousTags && preliminaryUndoRecord.observations[observationId]) {
                             const undoAction = preliminaryUndoRecord.observations[observationId].undoActions.find(
@@ -3834,7 +3830,7 @@ async function executeAction(action, observationId, preActionStates, preliminary
         const shouldExecuteAction = determineIfActionShouldExecute(action, observationId, preActionStates, skippedObservations);
         if (shouldExecuteAction) {
             debugLog(`Performing action ${action.type} for observation ${observationId}`);
-            const result = await performSingleAction(action, observationId, true);
+            const result = await performSingleAction(action, observationId);
             debugLog(`Action result:`, result);
             handleActionResult(result, action, observationId, preliminaryUndoRecord, results, skippedObservations);
         }
