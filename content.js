@@ -3569,7 +3569,7 @@ async function executeBulkAction(selectedActionConfig, modal, isCancelledFunc) {
 
 
     try {
-        const preActionStates = await generatePreActionStates(observationIds, checkCancelled, modal);
+        const preActionStates = await generatePreActionStates(observationIds, checkCancelled, modal, selectedActionConfig.actions);
 
         // Check if cancelled during pre-action state fetch
         if (checkCancelled()) {
@@ -4000,12 +4000,16 @@ function downloadTextFile(content, filename) {
     URL.revokeObjectURL(url);
 }
 
-async function generatePreActionStates(observationIds, checkCancelled, modal) {
+async function generatePreActionStates(observationIds, checkCancelled, modal, actions = []) {
     debugLog('=== PRE-ACTION STATES DEBUG START ===');
     debugLog('Fetching pre-action states for', observationIds.length, 'observations');
     const preActionStates = {};
     const failedFetches = [];
     const statusElement = modal ? modal.querySelector('#bulk-action-status') : null;
+    // isSubscribed is only consulted by the 'follow' branch of generatePreliminaryUndoRecord.
+    // Skip the per-obs /subscriptions GET when no follow action is configured — annotation,
+    // project, field, taxon-id, etc. bulks were paying N serial GETs for unread data.
+    const needsSubscriptions = actions.some(a => a.type === 'follow');
 
     // Retry/backoff on 429 is now handled centrally by makeAPIRequest.
     // Fetch observations in batches using the API's multi-ID support
@@ -4034,16 +4038,18 @@ async function generatePreActionStates(observationIds, checkCancelled, modal) {
                 preActionStates[obs.id] = obs;
             }
 
-            // Now fetch subscription data for each observation in this batch
-            for (const id of batch) {
-                if (preActionStates[id]) {
-                    try {
-                        const subscriptionData = await makeAPIRequest(`/observations/${id}/subscriptions`);
-                        preActionStates[id].isSubscribed = subscriptionData.results &&
-                            subscriptionData.results.length > 0;
-                    } catch (error) {
-                        console.error(`Error fetching subscription data for observation ${id}:`, error);
-                        preActionStates[id].isSubscribed = false;
+            // Subscription state is only needed for explicit 'follow' actions; skip otherwise.
+            if (needsSubscriptions) {
+                for (const id of batch) {
+                    if (preActionStates[id]) {
+                        try {
+                            const subscriptionData = await makeAPIRequest(`/observations/${id}/subscriptions`);
+                            preActionStates[id].isSubscribed = subscriptionData.results &&
+                                subscriptionData.results.length > 0;
+                        } catch (error) {
+                            console.error(`Error fetching subscription data for observation ${id}:`, error);
+                            preActionStates[id].isSubscribed = false;
+                        }
                     }
                 }
             }
