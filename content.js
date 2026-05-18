@@ -722,27 +722,43 @@ async function addAnnotation(observationId, attributeId, valueId) {
         }
     };
 
-    try {
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${jwt}`
-            },
-            body: JSON.stringify(data)
-        });
-        const responseData = await response.json();
-        if (!response.ok || responseData.errors) {
-            debugLog(`Annotation POST failed (HTTP ${response.status}), attempting to vote on existing:`, responseData.errors || responseData);
-            const voteResult = await voteOnExistingAnnotation(observationId, attributeId, valueId, jwt);
-            return voteResult;
-        } else {
+    // Inline retry on 429 and transient network errors. addAnnotation uses raw fetch
+    // (rather than makeAPIRequest) because the call site at performSingleAction depends
+    // on the {success, data, uuid} return shape; makeAPIRequest throws on errors.
+    // Intercept 429 BEFORE the voteOnExistingAnnotation fallthrough — throttling is
+    // transient, not a duplicate-annotation case.
+    const MAX_RETRIES = 2;
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        try {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${jwt}`
+                },
+                body: JSON.stringify(data)
+            });
+            if (response.status === 429 && attempt < MAX_RETRIES) {
+                debugLog(`429 on annotation for obs ${observationId}, retry ${attempt + 1}`);
+                await new Promise(r => setTimeout(r, 2000));
+                continue;
+            }
+            const responseData = await response.json();
+            if (!response.ok || responseData.errors) {
+                debugLog(`Annotation POST failed (HTTP ${response.status}), attempting to vote on existing:`, responseData.errors || responseData);
+                return await voteOnExistingAnnotation(observationId, attributeId, valueId, jwt);
+            }
             debugLog('Annotation added successfully:', responseData);
             return { success: true, data: responseData, uuid: responseData.uuid };
+        } catch (error) {
+            if (attempt < MAX_RETRIES) {
+                debugLog(`Network error on annotation for obs ${observationId}, retry ${attempt + 1}`, error);
+                await new Promise(r => setTimeout(r, 1000));
+                continue;
+            }
+            console.error('Error adding annotation:', error);
+            return { success: false, error: safeErrorString(error) };
         }
-    } catch (error) {
-        console.error('Error adding annotation:', error);
-        return { success: false, error: safeErrorString(error) };
     }
 }
 
