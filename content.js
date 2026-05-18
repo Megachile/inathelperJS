@@ -3974,12 +3974,32 @@ function getExistingObservationFieldValue(observationState, fieldId) {
 }
 
 
+// chrome.storage.local has a default 10 MB quota. When we exceed it, set() silently
+// fails: callback fires, lastError is set, but no record is saved. Trim oldest records
+// when approaching the cap and surface any remaining set() failure to the caller.
+const UNDO_QUOTA_BYTES = 9 * 1024 * 1024; // leave headroom below the 10 MB default
+
 function storeUndoRecord(undoRecord) {
     return new Promise((resolve, reject) => {
         browserAPI.storage.local.get('undoRecords', function(result) {
             let undoRecords = result.undoRecords || [];
             undoRecords.push(undoRecord);
+            // FIFO-evict oldest entries until the serialized payload fits under the cap.
+            let evicted = 0;
+            while (undoRecords.length > 1 &&
+                   JSON.stringify(undoRecords).length > UNDO_QUOTA_BYTES) {
+                undoRecords.shift();
+                evicted++;
+            }
+            if (evicted > 0) {
+                console.warn(`Undo record storage near quota: evicted ${evicted} oldest record(s) to make room.`);
+            }
             browserAPI.storage.local.set({undoRecords: undoRecords}, function() {
+                if (chrome.runtime.lastError) {
+                    console.error('Failed to store undo record:', chrome.runtime.lastError.message);
+                    reject(chrome.runtime.lastError);
+                    return;
+                }
                 debugLog('Undo record stored:', undoRecord);
                 debugLog('Total undo records:', undoRecords.length);
                 // Notify other tabs about the new undo record
