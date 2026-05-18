@@ -2060,35 +2060,6 @@ function displayWarning(message) {
     }, 5000);
 }
 
-async function getCurrentQualityMetricState(observationId) {
-    debugLog(`Getting current quality metric state for observation ${observationId}`);
-    try {
-        const response = await makeAPIRequest(`/observations/${observationId}`);
-        const observation = response.results[0];
-        debugLog(`Observation data:`, observation);
-
-        const qualityMetrics = {};
-        observation.quality_metrics.forEach(qm => {
-            qualityMetrics[qm.metric] = qm.agree ? 'agree' : 'disagree';
-        });
-
-        // Handle 'needs_id' separately
-        if (observation.owners_identification && observation.owners_identification.current) {
-            qualityMetrics['needs_id'] = 'agree';
-        } else if (observation.community_taxon && observation.taxon.id !== observation.community_taxon.id) {
-            qualityMetrics['needs_id'] = 'disagree';
-        } else {
-            qualityMetrics['needs_id'] = null;  // No vote for needs_id
-        }
-
-        debugLog(`Current quality metrics:`, qualityMetrics);
-        return qualityMetrics;
-    } catch (error) {
-        console.error(`Error fetching quality metric state for observation ${observationId}:`, error);
-        return {};
-    }
-}
-
 async function getObservationFieldValue(observationId, fieldId) {
     try {
         const response = await makeAPIRequest(`/observations/${observationId}`);
@@ -3825,60 +3796,6 @@ async function executeBulkAction(selectedActionConfig, modal, isCancelledFunc) {
     }
 }
 
-async function executeAction(action, observationId, preActionStates, preliminaryUndoRecord, results, skippedObservations) {
-    try {
-        const shouldExecuteAction = determineIfActionShouldExecute(action, observationId, preActionStates, skippedObservations);
-        if (shouldExecuteAction) {
-            debugLog(`Performing action ${action.type} for observation ${observationId}`);
-            const result = await performSingleAction(action, observationId);
-            debugLog(`Action result:`, result);
-            handleActionResult(result, action, observationId, preliminaryUndoRecord, results, skippedObservations);
-        }
-    } catch (error) {
-        console.error(`Failed to perform action ${action.type} for observation ${observationId}:`, error);
-        results.push({ observationId, action: action.type, success: false, error: safeErrorString(error) });
-    }
-}
-
-function determineIfActionShouldExecute(action, observationId, preActionStates, skippedObservations) {
-    if (action.type === 'qualityMetric') {
-        const currentState = getCurrentQualityMetricState(observationId, action.metric);
-        debugLog(`Current state for ${action.metric}:`, currentState);
-        
-        if (currentState === action.vote) {
-            debugLog(`Skipping ${action.metric} for observation ${observationId} as it's already in the desired state`);
-            return false;
-        }
-    } else if (action.type === 'observationField' || action.type === 'copyObservationField') {
-        let fieldId = action.fieldId;
-        let fieldValue = action.fieldValue;
-
-        if (action.type === 'copyObservationField') {
-            fieldId = action.targetFieldId;
-            fieldValue = getExistingObservationFieldValue(preActionStates[observationId], action.sourceFieldId);
-            if (fieldValue === null) {
-                debugLog(`Observation ${observationId}: Source field ${action.sourceFieldId} does not exist or is empty - skipping`);
-                return false;
-            }
-        }
-
-        const existingValue = getExistingObservationFieldValue(preActionStates[observationId], fieldId);
-        debugLog(`Observation ${observationId}: Existing value: "${existingValue}", Desired value: "${fieldValue}"`);
-        
-        if (existingValue !== null) {
-            if (existingValue === fieldValue) {
-                debugLog(`Observation ${observationId}: Existing value matches desired value - silently skipping`);
-                return false;
-            } else {
-/*                 debugLog(`Observation ${observationId}: Existing value differs from desired value - skipping and adding to skipped list`);
-                skippedObservations.push(observationId); */
-                return true;
-            }
-        }
-    }
-    return true;
-}
-
 function handleActionResult(result, action, observationId, preliminaryUndoRecord, results, skippedObservations) {
     if (result.success) {
         if (action.type === 'addComment' && result.commentUUID) {
@@ -3941,21 +3858,6 @@ function handleActionResults(results, skippedObservations, undoRecord, errorMess
     }
 
     debugLog('Bulk action results:', results);
-}
-
-async function getCurrentQualityMetricState(observationId, metric) {
-    try {
-        const response = await makeAPIRequest(`/observations/${observationId}`);
-        const observation = response.results[0];
-        const qualityMetric = observation.quality_metrics.find(qm => qm.metric === metric);
-        if (qualityMetric) {
-            return qualityMetric.agree ? 'agree' : 'disagree';
-        }
-        return 'unknown';
-    } catch (error) {
-        console.error(`Error fetching quality metric state for observation ${observationId}:`, error);
-        return 'unknown';
-    }
 }
 
 function getExistingObservationFieldValue(observationState, fieldId) {
