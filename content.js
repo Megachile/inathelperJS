@@ -5600,19 +5600,25 @@ async function validateBulkAction(selectedAction, observationIds, getIsCancelled
         }
     });
 
-    for (const observationId of observationIds) {
+    // Parallelize the per-obs validation loop at conc=8. Each obs's body mutates
+    // its own slot in results.toProcess / results.toSkip / results.existingValues —
+    // safe under JS's single-threaded event loop. Same pattern as Tier B/C.
+    let validationCancelled = false;
+    await runWithConcurrency(observationIds, 8, async (observationId) => {
+        if (validationCancelled) return;
         if (getIsCancelled && getIsCancelled()) {
-            debugLog("validateBulkAction: Operation cancelled. Aborting validation loop for observationId:", observationId);
-            throw new Error('ValidationCancelled');
+            validationCancelled = true;
+            return;
         }
 
         let wouldOverwriteInSafeMode = false;
         const differingExistingFieldsForOverwriteMode = new Map(); // Store { fieldId: {current: X, proposed: Y} }
 
         for (const action of selectedAction.actions) {
+            if (validationCancelled) return;
             if (getIsCancelled && getIsCancelled()) {
-                debugLog("validateBulkAction: Operation cancelled during field check for observationId:", observationId);
-                throw new Error('ValidationCancelled');
+                validationCancelled = true;
+                return;
             }
             if (action.type === 'observationField') {
                 try {
@@ -5696,10 +5702,10 @@ async function validateBulkAction(selectedAction, observationIds, getIsCancelled
                 });
             }
         }
-    }
-    
-    if (getIsCancelled && getIsCancelled()) {
-        debugLog("validateBulkAction: Operation cancelled just before returning results.");
+    });
+
+    if (validationCancelled || (getIsCancelled && getIsCancelled())) {
+        debugLog("validateBulkAction: Operation cancelled.");
         throw new Error('ValidationCancelled');
     }
 
