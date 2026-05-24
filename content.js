@@ -3935,7 +3935,10 @@ async function generatePreActionStates(observationIds, checkCancelled, modal, ac
     // the selective fields cut payload ~50x vs v1's full-obs response since downstream code
     // only reads id/uuid/identifications/ofvs/project_observations/reviewed_by.
     const batchSize = 200;
-    const fieldsParam = '(id:!t,uuid:!t,identifications:(id:!t,uuid:!t,user:(id:!t),current:!t,taxon:(id:!t,name:!t),created_at:!t),ofvs:!t,project_observations:!t,reviewed_by:!t)';
+    // v2 `:!t` on a complex type only includes the key, not its subfields — verified
+    // empirically: `ofvs:!t` returned `[{}]` and `project_observations:!t` omitted
+    // the nested `project` object. Enumerate the subfields downstream code actually reads.
+    const fieldsParam = '(id:!t,uuid:!t,identifications:(id:!t,uuid:!t,user:(id:!t),current:!t,taxon:(id:!t,name:!t),created_at:!t),ofvs:(field_id:!t,value:!t),project_observations:(project:(id:!t)),reviewed_by:!t)';
     const encodedFields = encodeURIComponent(fieldsParam);
     for (let i = 0; i < observationIds.length; i += batchSize) {
         // Check for cancellation
