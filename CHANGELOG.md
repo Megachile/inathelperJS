@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.3.0] - 2026-05-23
+
+Performance + new annotation downvote action. Bulk actions on 200 observations went from ~4-5 minutes to ~33 seconds — roughly 8× faster — by parallelizing the validation, prevention, and per-obs action loops, switching the pre-action prefetch to the v2 search endpoint with selective fields, and eliminating waste in the post-action settle phase.
+
+### Added
+- **Downvote existing annotation action** (#43, #44) — new checkbox on the annotation action panel lets a button downvote (disagree with) the matching existing annotation instead of attempting to add a new one. Useful for cleanup workflows like disagreeing with incorrect Life Stage tags across many observations. `disagreeWithAnnotation()` is a new function in `content.js`; `removeAnnotationVote` is a new undo case in `shared_api.js`. No matching annotation is treated as no-op success (mirrors the addToProject pattern). Action description previews show "Downvote annotation" when configured.
+- **`safeFetch` helper** in `shared_api.js` — wraps `fetch` with 429 retry + Retry-After honoring + transient-network retry, returns the Response object as-is so callers can keep their own non-OK handling. Used by every bulk-hot-path write handler (addObservationField, addComment, addTag, addTaxonId, handleQualityMetricAPI, markObservationReviewed, performProjectAction, disagreeWithAnnotation, and the voteOnExistingAnnotation fallback paths).
+- **`runWithConcurrency` helper** in `shared_api.js` — bounded-pool parallel execution used to drive the validation, prevention, and action loops.
+
+### Changed
+- **Bulk action prefetch uses v2 search endpoint** (#39) — `generatePreActionStates` now calls `/v2/observations` with a selective `fields` parameter (just `id`, `uuid`, `identifications` subfields, `ofvs.field_id/value`, `project_observations.project.id`, `reviewed_by`) and `per_page=200`. Replaces seven v1 multi-ID round-trips (~3.6 MB) with one v2 round-trip (~64 KB). `makeAPIRequest` now detects `/v2/` prefixes and routes them to the v2 base instead of the v1 prefix.
+- **`generatePreActionStates` skips `/subscriptions` GETs** when no `follow` action is configured (#37) — the only consumer of `isSubscribed` is the follow undo branch. Annotation, project, field, taxon-id bulks were paying N serial GETs for unread data.
+- **`handleStateRestoration` early-returns** when nothing was captured to restore (#38) — annotation-only bulks were paying a 500ms `delay` per observation for a no-op check.
+- **`addAnnotation` retries 429 inline** before falling through to `voteOnExistingAnnotation` (#36) — `addAnnotation` was bypassing `makeAPIRequest`'s retry by using raw fetch and treating any non-OK response (including throttling) as a "duplicate annotation, vote on it" case, doubling rate-limit pressure under throttling.
+- **Validation loop parallelized** at concurrency 8 (#45) — `validateBulkAction`'s per-observation `getFieldValueDetails` GETs now run in parallel instead of serially. Validating a 200-obs OF bulk dropped from ~30s to ~6s.
+- **Prevention loop parallelized** at concurrency 8 (#45) — `handleFollowAndReviewPrevention` per-observation calls now run in parallel.
+- **Per-obs action loop parallelized** at concurrency 8 (#45) — the inner per-action loop within one observation stays sequential (actions must run in declared order); concurrency applies across observations. Mid-bulk cancellation uses a flag rather than `break` so in-flight workers drain cleanly. iNat's effective POST throughput is ~7-8 req/s in our tests; conc=8 saturates that without 429s.
+- **`storeUndoRecord` evicts oldest entries** when approaching the 10 MB `chrome.storage.local` quota and surfaces `chrome.runtime.lastError` on failure (#40) — heavy users were silently losing undo records past 10 MB with no indication anything was wrong.
+- **URLgen full-state persistence** (#46) — `saveInputs` now writes every key that `loadInputs` reads (static inputs, quality grades, reviewed status, search-on, licenses, observation sources, geographic bounding box, custom-list selections, and dynamic action fields). Previously only action boxes persisted across sessions. After a restore, visibility-controlling radios (date type, geo search type) fire change events so their containers show/hide correctly.
+- **URLgen default state**: all three quality grades (Casual, Needs ID, Research) and `reviewed=any` are now checked by default and on Reset.
+
+### Fixed
+- **v2 prefetch subfield bug** (#39 follow-up) — `:!t` on a complex type only includes the key, not its subfields. The initial v2 migration used `ofvs:!t` (came back as `[{}]`) and `project_observations:!t` (missing `project.id`). Now enumerates `ofvs:(field_id:!t,value:!t)` and `project_observations:(project:(id:!t))` explicitly so the data downstream code reads is actually present.
+
+### Removed
+- **Dead `qualityMetric` skip chain** (#41) — `executeAction`, `determineIfActionShouldExecute`, and both `getCurrentQualityMetricState` definitions formed a chain that was never called from the live bulk path. Deleted. The functional gap (skip qualityMetric vote when obs already has it) is real but separate.
+- **`performSingleAction` unused `isIdentifyPage` parameter** (#42) — the third argument was unread in the function body and the bulk call site was passing pre-action state into it with a misleading comment. Cleaned up.
+
 ## [3.2.3] - 2026-05-10
 
 Patch release eliminating a third-party CDN dependency discovered during the Chrome Web Store submission pass.
