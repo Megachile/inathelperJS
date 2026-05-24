@@ -557,6 +557,7 @@ function extractActionsFromForm() {
             case 'annotation':
                 action.annotationField = actionDiv.querySelector('.annotationField').value;
                 action.annotationValue = actionDiv.querySelector('.annotationValue').value;
+                action.disagree = actionDiv.querySelector('.annotationDisagree')?.checked || false;
                 break;
             case 'addToProject':
                 action.projectId = actionDiv.querySelector('.projectId').value.trim();
@@ -904,6 +905,8 @@ function populateActionInputs(actionDiv, action) {
             const annotationValue = actionDiv.querySelector('.annotationValue');
             updateAnnotationValues(actionDiv.querySelector('.annotationField'), annotationValue);
             annotationValue.value = action.annotationValue || '';
+            const disagreeCheckbox = actionDiv.querySelector('.annotationDisagree');
+            if (disagreeCheckbox) disagreeCheckbox.checked = action.disagree || false;
             break;
         case 'addToProject':
             actionDiv.querySelector('.projectName').value = action.projectName || '';
@@ -1025,6 +1028,14 @@ function addActionToForm(action = null) {
         <div class="annotationInputs" style="display:none;">
             <select class="annotationField"></select>
             <select class="annotationValue"></select>
+            <div class="checkboxContainer" style="display: flex; align-items: center; margin-top: 10px;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <input type="checkbox" class="annotationDisagree" id="annotationDisagree-${Date.now()}" style="margin: 0;">
+                    <label for="annotationDisagree-${Date.now()}" style="margin: 0; font-size: 14px; cursor: pointer; line-height: 1.4;">
+                        Downvote (disagree with) the matching existing annotation instead of adding it
+                    </label>
+                </div>
+            </div>
         </div>
         <div class="projectInputs" style="display:none;">
             <input type="text" class="projectName" placeholder="Project Name">
@@ -1463,7 +1474,9 @@ async function formatAction(action) {
         case 'annotation':
             const fieldName = getAnnotationFieldName(action.annotationField);
             const valueName = getAnnotationValueName(action.annotationField, action.annotationValue);
-            return `Set "${fieldName}" to "${valueName}"`;
+            return action.disagree
+                ? `Downvote "${fieldName}" = "${valueName}"`
+                : `Set "${fieldName}" to "${valueName}"`;
         case 'addToProject':
                 return action.remove ? 
                     `Remove from project: ${action.projectName || action.projectId}` :

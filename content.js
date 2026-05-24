@@ -722,27 +722,43 @@ async function addAnnotation(observationId, attributeId, valueId) {
         }
     };
 
-    try {
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${jwt}`
-            },
-            body: JSON.stringify(data)
-        });
-        const responseData = await response.json();
-        if (!response.ok || responseData.errors) {
-            debugLog(`Annotation POST failed (HTTP ${response.status}), attempting to vote on existing:`, responseData.errors || responseData);
-            const voteResult = await voteOnExistingAnnotation(observationId, attributeId, valueId, jwt);
-            return voteResult;
-        } else {
+    // Inline retry on 429 and transient network errors. addAnnotation uses raw fetch
+    // (rather than makeAPIRequest) because the call site at performSingleAction depends
+    // on the {success, data, uuid} return shape; makeAPIRequest throws on errors.
+    // Intercept 429 BEFORE the voteOnExistingAnnotation fallthrough — throttling is
+    // transient, not a duplicate-annotation case.
+    const MAX_RETRIES = 2;
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        try {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${jwt}`
+                },
+                body: JSON.stringify(data)
+            });
+            if (response.status === 429 && attempt < MAX_RETRIES) {
+                debugLog(`429 on annotation for obs ${observationId}, retry ${attempt + 1}`);
+                await new Promise(r => setTimeout(r, 2000));
+                continue;
+            }
+            const responseData = await response.json();
+            if (!response.ok || responseData.errors) {
+                debugLog(`Annotation POST failed (HTTP ${response.status}), attempting to vote on existing:`, responseData.errors || responseData);
+                return await voteOnExistingAnnotation(observationId, attributeId, valueId, jwt);
+            }
             debugLog('Annotation added successfully:', responseData);
             return { success: true, data: responseData, uuid: responseData.uuid };
+        } catch (error) {
+            if (attempt < MAX_RETRIES) {
+                debugLog(`Network error on annotation for obs ${observationId}, retry ${attempt + 1}`, error);
+                await new Promise(r => setTimeout(r, 1000));
+                continue;
+            }
+            console.error('Error adding annotation:', error);
+            return { success: false, error: safeErrorString(error) };
         }
-    } catch (error) {
-        console.error('Error adding annotation:', error);
-        return { success: false, error: safeErrorString(error) };
     }
 }
 
@@ -847,6 +863,68 @@ async function voteOnExistingAnnotation(observationId, attributeId, valueId, jwt
         }
     } catch (error) {
         console.error('Error voting on existing annotation:', error);
+        return { success: false, error: safeErrorString(error) };
+    }
+}
+
+async function disagreeWithAnnotation(observationId, attributeId, valueId) {
+    if (!observationId) {
+        return { success: false, error: 'No observation ID provided' };
+    }
+    const jwt = await getJWT();
+    if (!jwt) {
+        return { success: false, error: 'No JWT found' };
+    }
+
+    try {
+        const obsResponse = await fetch(`${API_URL}/observations/${observationId}`, {
+            headers: { 'Authorization': `Bearer ${jwt}` }
+        });
+        const obsData = await obsResponse.json();
+        const observation = obsData.results ? obsData.results[0] : null;
+        if (!observation) {
+            return { success: false, error: 'Could not fetch observation' };
+        }
+
+        const targetAnnotation = (observation.annotations || []).find(ann =>
+            ann.controlled_attribute_id === parseInt(attributeId) &&
+            ann.controlled_value_id === parseInt(valueId)
+        );
+
+        if (!targetAnnotation) {
+            // No matching annotation to downvote — treat as a no-op success
+            // (parallels addToProject's noActionNeeded behavior for bulk summaries).
+            return {
+                success: true,
+                noActionNeeded: true,
+                message: 'No matching annotation to downvote',
+                disagree: true
+            };
+        }
+
+        const voteUrl = `${API_URL}/votes/vote/annotation/${targetAnnotation.uuid}`;
+        const voteResponse = await fetch(voteUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${jwt}`
+            },
+            body: JSON.stringify({ vote: false })
+        });
+
+        if (voteResponse.ok) {
+            return {
+                success: true,
+                uuid: targetAnnotation.uuid,
+                action: 'disagreed',
+                disagree: true
+            };
+        } else {
+            const errorData = await voteResponse.json().catch(() => ({}));
+            return { success: false, error: 'Failed to vote disagree on annotation', data: errorData };
+        }
+    } catch (error) {
+        console.error('Error disagreeing with annotation:', error);
         return { success: false, error: safeErrorString(error) };
     }
 }
@@ -1868,7 +1946,7 @@ function showFieldPromptModal(fieldName, fieldDatatype, fieldAllowedValues, defa
     });
 }
 
-async function performSingleAction(action, observationId, isIdentifyPage) {
+async function performSingleAction(action, observationId) {
     switch (action.type) {
         case 'follow':
             const followState = await makeAPIRequest(`/observations/${observationId}/subscriptions`);
@@ -1972,6 +2050,10 @@ async function performSingleAction(action, observationId, isIdentifyPage) {
             }
             return addObservationField(observationId, action.targetFieldId, sourceValue);    
         case 'annotation':
+            if (action.disagree) {
+                const disagreeResult = await disagreeWithAnnotation(observationId, action.annotationField, action.annotationValue);
+                return { ...disagreeResult, annotationVoteUUID: disagreeResult.uuid, disagree: true };
+            }
             const annotationResult = await addAnnotation(observationId, action.annotationField, action.annotationValue);
             return { ...annotationResult, annotationUUID: annotationResult.uuid };
         case 'addToProject':
@@ -2042,35 +2124,6 @@ function displayWarning(message) {
     setTimeout(() => {
         document.body.removeChild(warningDiv);
     }, 5000);
-}
-
-async function getCurrentQualityMetricState(observationId) {
-    debugLog(`Getting current quality metric state for observation ${observationId}`);
-    try {
-        const response = await makeAPIRequest(`/observations/${observationId}`);
-        const observation = response.results[0];
-        debugLog(`Observation data:`, observation);
-
-        const qualityMetrics = {};
-        observation.quality_metrics.forEach(qm => {
-            qualityMetrics[qm.metric] = qm.agree ? 'agree' : 'disagree';
-        });
-
-        // Handle 'needs_id' separately
-        if (observation.owners_identification && observation.owners_identification.current) {
-            qualityMetrics['needs_id'] = 'agree';
-        } else if (observation.community_taxon && observation.taxon.id !== observation.community_taxon.id) {
-            qualityMetrics['needs_id'] = 'disagree';
-        } else {
-            qualityMetrics['needs_id'] = null;  // No vote for needs_id
-        }
-
-        debugLog(`Current quality metrics:`, qualityMetrics);
-        return qualityMetrics;
-    } catch (error) {
-        console.error(`Error fetching quality metric state for observation ${observationId}:`, error);
-        return {};
-    }
 }
 
 async function getObservationFieldValue(observationId, fieldId) {
@@ -3553,7 +3606,7 @@ async function executeBulkAction(selectedActionConfig, modal, isCancelledFunc) {
 
 
     try {
-        const preActionStates = await generatePreActionStates(observationIds, checkCancelled, modal);
+        const preActionStates = await generatePreActionStates(observationIds, checkCancelled, modal, selectedActionConfig.actions);
 
         // Check if cancelled during pre-action state fetch
         if (checkCancelled()) {
@@ -3662,11 +3715,7 @@ async function executeBulkAction(selectedActionConfig, modal, isCancelledFunc) {
                             }
                         }
                     } else {
-                        actionResult = await performSingleAction(
-                            action,
-                            observationId,
-                            preActionStates[observationId] // Pass pre-action state for this specific observation
-                        );
+                        actionResult = await performSingleAction(action, observationId);
                         // Update undo record with result-specific data for addTag
                         if (action.type === 'addTag' && actionResult.success && actionResult.previousTags && preliminaryUndoRecord.observations[observationId]) {
                             const undoAction = preliminaryUndoRecord.observations[observationId].undoActions.find(
@@ -3681,7 +3730,10 @@ async function executeBulkAction(selectedActionConfig, modal, isCancelledFunc) {
                     let resultForSummary = { ...actionResult, observationId, action: action.type };
                     if (action.type === 'observationField') resultForSummary.fieldId = action.fieldId;
                     // Add other potential differentiators if actions of same type can vary (e.g. annotation field ID)
-                    if (action.type === 'annotation') resultForSummary.annotationField = action.annotationField;
+                    if (action.type === 'annotation') {
+                        resultForSummary.annotationField = action.annotationField;
+                        resultForSummary.disagree = !!action.disagree;
+                    }
                     // Ensure error is also stored as message for consistency with display code
                     if (!actionResult.success && actionResult.error && !actionResult.message) {
                         resultForSummary.message = actionResult.error;
@@ -3715,7 +3767,8 @@ async function executeBulkAction(selectedActionConfig, modal, isCancelledFunc) {
                         observationId,
                         action: action.type,
                         fieldId: action.type === 'observationField' ? action.fieldId : undefined,
-                        annotationField: action.type === 'annotation' ? action.annotationField : undefined
+                        annotationField: action.type === 'annotation' ? action.annotationField : undefined,
+                        disagree: action.type === 'annotation' ? !!action.disagree : undefined
                     });
                 }
             }
@@ -3813,60 +3866,6 @@ async function executeBulkAction(selectedActionConfig, modal, isCancelledFunc) {
     }
 }
 
-async function executeAction(action, observationId, preActionStates, preliminaryUndoRecord, results, skippedObservations) {
-    try {
-        const shouldExecuteAction = determineIfActionShouldExecute(action, observationId, preActionStates, skippedObservations);
-        if (shouldExecuteAction) {
-            debugLog(`Performing action ${action.type} for observation ${observationId}`);
-            const result = await performSingleAction(action, observationId, true);
-            debugLog(`Action result:`, result);
-            handleActionResult(result, action, observationId, preliminaryUndoRecord, results, skippedObservations);
-        }
-    } catch (error) {
-        console.error(`Failed to perform action ${action.type} for observation ${observationId}:`, error);
-        results.push({ observationId, action: action.type, success: false, error: safeErrorString(error) });
-    }
-}
-
-function determineIfActionShouldExecute(action, observationId, preActionStates, skippedObservations) {
-    if (action.type === 'qualityMetric') {
-        const currentState = getCurrentQualityMetricState(observationId, action.metric);
-        debugLog(`Current state for ${action.metric}:`, currentState);
-        
-        if (currentState === action.vote) {
-            debugLog(`Skipping ${action.metric} for observation ${observationId} as it's already in the desired state`);
-            return false;
-        }
-    } else if (action.type === 'observationField' || action.type === 'copyObservationField') {
-        let fieldId = action.fieldId;
-        let fieldValue = action.fieldValue;
-
-        if (action.type === 'copyObservationField') {
-            fieldId = action.targetFieldId;
-            fieldValue = getExistingObservationFieldValue(preActionStates[observationId], action.sourceFieldId);
-            if (fieldValue === null) {
-                debugLog(`Observation ${observationId}: Source field ${action.sourceFieldId} does not exist or is empty - skipping`);
-                return false;
-            }
-        }
-
-        const existingValue = getExistingObservationFieldValue(preActionStates[observationId], fieldId);
-        debugLog(`Observation ${observationId}: Existing value: "${existingValue}", Desired value: "${fieldValue}"`);
-        
-        if (existingValue !== null) {
-            if (existingValue === fieldValue) {
-                debugLog(`Observation ${observationId}: Existing value matches desired value - silently skipping`);
-                return false;
-            } else {
-/*                 debugLog(`Observation ${observationId}: Existing value differs from desired value - skipping and adding to skipped list`);
-                skippedObservations.push(observationId); */
-                return true;
-            }
-        }
-    }
-    return true;
-}
-
 function handleActionResult(result, action, observationId, preliminaryUndoRecord, results, skippedObservations) {
     if (result.success) {
         if (action.type === 'addComment' && result.commentUUID) {
@@ -3885,6 +3884,15 @@ function handleActionResult(result, action, observationId, preliminaryUndoRecord
             );
             if (undoAction) {
                 undoAction.uuid = result.annotationUUID;
+            }
+        } else if (action.type === 'annotation' && action.disagree && result.annotationVoteUUID) {
+            const undoAction = preliminaryUndoRecord.observations[observationId].undoActions.find(
+                ua => ua.type === 'removeAnnotationVote' &&
+                    ua.attributeId === action.annotationField &&
+                    ua.valueId === action.annotationValue
+            );
+            if (undoAction) {
+                undoAction.uuid = result.annotationVoteUUID;
             }
         } else if (action.type === 'addTaxonId' && result.identificationUUID) {
             const undoAction = preliminaryUndoRecord.observations[observationId].undoActions.find(
@@ -3931,21 +3939,6 @@ function handleActionResults(results, skippedObservations, undoRecord, errorMess
     debugLog('Bulk action results:', results);
 }
 
-async function getCurrentQualityMetricState(observationId, metric) {
-    try {
-        const response = await makeAPIRequest(`/observations/${observationId}`);
-        const observation = response.results[0];
-        const qualityMetric = observation.quality_metrics.find(qm => qm.metric === metric);
-        if (qualityMetric) {
-            return qualityMetric.agree ? 'agree' : 'disagree';
-        }
-        return 'unknown';
-    } catch (error) {
-        console.error(`Error fetching quality metric state for observation ${observationId}:`, error);
-        return 'unknown';
-    }
-}
-
 function getExistingObservationFieldValue(observationState, fieldId) {
     debugLog('Checking existing value for field:', fieldId, 'in state:', observationState);
     if (observationState && observationState.ofvs) {
@@ -3958,12 +3951,32 @@ function getExistingObservationFieldValue(observationState, fieldId) {
 }
 
 
+// chrome.storage.local has a default 10 MB quota. When we exceed it, set() silently
+// fails: callback fires, lastError is set, but no record is saved. Trim oldest records
+// when approaching the cap and surface any remaining set() failure to the caller.
+const UNDO_QUOTA_BYTES = 9 * 1024 * 1024; // leave headroom below the 10 MB default
+
 function storeUndoRecord(undoRecord) {
     return new Promise((resolve, reject) => {
         browserAPI.storage.local.get('undoRecords', function(result) {
             let undoRecords = result.undoRecords || [];
             undoRecords.push(undoRecord);
+            // FIFO-evict oldest entries until the serialized payload fits under the cap.
+            let evicted = 0;
+            while (undoRecords.length > 1 &&
+                   JSON.stringify(undoRecords).length > UNDO_QUOTA_BYTES) {
+                undoRecords.shift();
+                evicted++;
+            }
+            if (evicted > 0) {
+                console.warn(`Undo record storage near quota: evicted ${evicted} oldest record(s) to make room.`);
+            }
             browserAPI.storage.local.set({undoRecords: undoRecords}, function() {
+                if (chrome.runtime.lastError) {
+                    console.error('Failed to store undo record:', chrome.runtime.lastError.message);
+                    reject(chrome.runtime.lastError);
+                    return;
+                }
                 debugLog('Undo record stored:', undoRecord);
                 debugLog('Total undo records:', undoRecords.length);
                 // Notify other tabs about the new undo record
@@ -3984,16 +3997,25 @@ function downloadTextFile(content, filename) {
     URL.revokeObjectURL(url);
 }
 
-async function generatePreActionStates(observationIds, checkCancelled, modal) {
+async function generatePreActionStates(observationIds, checkCancelled, modal, actions = []) {
     debugLog('=== PRE-ACTION STATES DEBUG START ===');
     debugLog('Fetching pre-action states for', observationIds.length, 'observations');
     const preActionStates = {};
     const failedFetches = [];
     const statusElement = modal ? modal.querySelector('#bulk-action-status') : null;
+    // isSubscribed is only consulted by the 'follow' branch of generatePreliminaryUndoRecord.
+    // Skip the per-obs /subscriptions GET when no follow action is configured — annotation,
+    // project, field, taxon-id, etc. bulks were paying N serial GETs for unread data.
+    const needsSubscriptions = actions.some(a => a.type === 'follow');
 
     // Retry/backoff on 429 is now handled centrally by makeAPIRequest.
-    // Fetch observations in batches using the API's multi-ID support
-    const batchSize = 30; // API supports up to 30 IDs per request
+    // Fetch observations in batches using the v2 search endpoint with selective fields.
+    // v2 accepts up to 200 IDs per request (matching the identify-page per_page cap), and
+    // the selective fields cut payload ~50x vs v1's full-obs response since downstream code
+    // only reads id/uuid/identifications/ofvs/project_observations/reviewed_by.
+    const batchSize = 200;
+    const fieldsParam = '(id:!t,uuid:!t,identifications:(id:!t,uuid:!t,user:(id:!t),current:!t,taxon:(id:!t,name:!t),created_at:!t),ofvs:!t,project_observations:!t,reviewed_by:!t)';
+    const encodedFields = encodeURIComponent(fieldsParam);
     for (let i = 0; i < observationIds.length; i += batchSize) {
         // Check for cancellation
         if (checkCancelled && checkCancelled()) {
@@ -4011,23 +4033,25 @@ async function generatePreActionStates(observationIds, checkCancelled, modal) {
 
         try {
             // Fetch all observations in this batch with a single API call
-            const obsData = await makeAPIRequest(`/observations/${idsParam}`);
+            const obsData = await makeAPIRequest(`/v2/observations?id=${idsParam}&per_page=${batchSize}&fields=${encodedFields}`);
 
             // Store each observation's data
             for (const obs of obsData.results) {
                 preActionStates[obs.id] = obs;
             }
 
-            // Now fetch subscription data for each observation in this batch
-            for (const id of batch) {
-                if (preActionStates[id]) {
-                    try {
-                        const subscriptionData = await makeAPIRequest(`/observations/${id}/subscriptions`);
-                        preActionStates[id].isSubscribed = subscriptionData.results &&
-                            subscriptionData.results.length > 0;
-                    } catch (error) {
-                        console.error(`Error fetching subscription data for observation ${id}:`, error);
-                        preActionStates[id].isSubscribed = false;
+            // Subscription state is only needed for explicit 'follow' actions; skip otherwise.
+            if (needsSubscriptions) {
+                for (const id of batch) {
+                    if (preActionStates[id]) {
+                        try {
+                            const subscriptionData = await makeAPIRequest(`/observations/${id}/subscriptions`);
+                            preActionStates[id].isSubscribed = subscriptionData.results &&
+                                subscriptionData.results.length > 0;
+                        } catch (error) {
+                            console.error(`Error fetching subscription data for observation ${id}:`, error);
+                            preActionStates[id].isSubscribed = false;
+                        }
                     }
                 }
             }
@@ -4050,7 +4074,7 @@ async function generatePreActionStates(observationIds, checkCancelled, modal) {
 
         // Add delay between batches (not needed as much with batch fetching, but still good practice)
         if (i + batchSize < observationIds.length) {
-            await delay(500); // 500ms between batches of 30
+            await delay(500); // inter-batch delay; with batchSize=200 normally unreached
         }
     }
 
@@ -4148,12 +4172,21 @@ async function generatePreliminaryUndoRecord(action, observationIds, preActionSt
                     };
                     break;
                 case 'annotation':
-                    undoAction = {
-                        type: 'removeAnnotation',
-                        attributeId: actionItem.annotationField,
-                        valueId: actionItem.annotationValue,
-                        uuid: null // This will be filled in after the action is performed
-                    };
+                    if (actionItem.disagree) {
+                        undoAction = {
+                            type: 'removeAnnotationVote',
+                            attributeId: actionItem.annotationField,
+                            valueId: actionItem.annotationValue,
+                            uuid: null // Filled in after the disagree vote is recorded
+                        };
+                    } else {
+                        undoAction = {
+                            type: 'removeAnnotation',
+                            attributeId: actionItem.annotationField,
+                            valueId: actionItem.annotationValue,
+                            uuid: null // Filled in after the action is performed
+                        };
+                    }
                     break;
                 case 'addToProject':
                     try {
@@ -5013,7 +5046,7 @@ function updateActionDescription(actionSelect) {
                         // Find the field name by ID
                         let annotationFieldName = 'Unknown';
                         let annotationValueName = 'Unknown';
-                        
+
                         for (const [key, value] of Object.entries(controlledTerms)) {
                             if (value.id === parseInt(action.annotationField)) {
                                 annotationFieldName = key;
@@ -5027,7 +5060,9 @@ function updateActionDescription(actionSelect) {
                                 break;
                             }
                         }
-                        actionDesc = `Add annotation: ${annotationFieldName} = ${annotationValueName}`;
+                        actionDesc = action.disagree
+                            ? `Downvote annotation: ${annotationFieldName} = ${annotationValueName}`
+                            : `Add annotation: ${annotationFieldName} = ${annotationValueName}`;
                         break;
                     case 'addToProject':
                         actionDesc = `${action.remove ? 'Remove from' : 'Add to'} project: ${action.projectName}`;
@@ -6305,7 +6340,9 @@ async function createValidationModal(validationResults, selectedAction, onConfir
                         // Find the field name by ID
                         let annotationFieldName = getAnnotationFieldName(action.annotationField); // Ensure getAnnotationFieldName is available
                         let annotationValueName = getAnnotationValueName(action.annotationField, action.annotationValue); // Ensure getAnnotationValueName is available
-                        actionDesc = `Add annotation: ${annotationFieldName} = ${annotationValueName}`;
+                        actionDesc = action.disagree
+                            ? `Downvote annotation: ${annotationFieldName} = ${annotationValueName}`
+                            : `Add annotation: ${annotationFieldName} = ${annotationValueName}`;
                         break;
                     case 'addToProject':
                         actionDesc = `${action.remove ? 'Remove from' : 'Add to'} project: ${action.projectName}`;
@@ -6714,7 +6751,9 @@ function createActionDescription(selectedAction) {
                     case 'annotation':
                         const fieldName = getAnnotationFieldName(action.annotationField);
                         const valueName = getAnnotationValueName(action.annotationField, action.annotationValue);
-                        actionDesc = `Add annotation: ${fieldName} = ${valueName}`;
+                        actionDesc = action.disagree
+                            ? `Downvote annotation: ${fieldName} = ${valueName}`
+                            : `Add annotation: ${fieldName} = ${valueName}`;
                         break;
                     case 'addToProject':
                         actionDesc = `${action.remove ? 'Remove from' : 'Add to'} project: ${action.projectName}`;
@@ -6805,10 +6844,13 @@ async function handleFollowAndReviewPrevention(observationId, actions, results) 
 
 async function handleStateRestoration(observationId, actions, results, originalStates) {
     if (results.every(r => r.success)) {
+        const { originalFollowState, originalReviewState } = originalStates;
+        // Skip the auto-action settle wait when nothing was captured to restore —
+        // annotation-only bulks were paying 500ms per obs for a no-op check.
+        if (originalFollowState === null && originalReviewState === null) return;
+
         debugLog('Actions completed successfully, checking states...');
         await delay(500); // Wait for iNat's auto-actions to take effect
-
-        const { originalFollowState, originalReviewState } = originalStates;
 
         // Follow check
         if (originalFollowState !== null) {
