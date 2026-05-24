@@ -820,6 +820,23 @@ async function performSingleUndoAction(observationId, undoAction) {
                     console.error('Annotation UUID not found for undo action');
                     return { success: false, error: 'Annotation UUID not found' };
                 }
+            case 'removeAnnotationVote':
+                // No UUID means the original action was a no-op (no matching annotation existed)
+                // so there's no vote to remove.
+                if (!undoAction.uuid) {
+                    return { success: true, action: 'removeAnnotationVote', message: 'No vote was recorded; nothing to undo' };
+                }
+                try {
+                    const response = await makeAPIRequest(`/votes/unvote/annotation/${undoAction.uuid}`, { method: 'DELETE' });
+                    debugLog('Annotation vote removal response:', response);
+                    return { success: true, action: 'removeAnnotationVote', message: 'Annotation downvote removed' };
+                } catch (error) {
+                    console.error('Error removing annotation vote:', error);
+                    if (error.message && error.message.includes('HTTP error! status: 404')) {
+                        return { success: true, action: 'removeAnnotationVote', message: 'Vote already removed or annotation gone' };
+                    }
+                    return { success: false, error: safeErrorString(error) };
+                }
             case 'updateObservationField':
                 // First, get the current state of the observation
                 const observationResponse = await makeAPIRequest(`/observations/${observationId}`);
@@ -2030,7 +2047,7 @@ function summarizeBulkActionOutcomes(allActionResults, configuredActions) {
         // Differentiate if multiple actions of the same type exist (e.g., two different OFs)
         if (configAction.type === 'observationField') key += `-${configAction.fieldId}`;
         if (configAction.type === 'addToProject') key += `-${configAction.projectId}`;
-        if (configAction.type === 'annotation') key += `-${configAction.annotationField}`;
+        if (configAction.type === 'annotation') key += `-${configAction.annotationField}${configAction.disagree ? '-disagree' : ''}`;
         // Add more differentiators if needed for other types
 
         summaryByActionType[key] = {
@@ -2061,7 +2078,11 @@ function summarizeBulkActionOutcomes(allActionResults, configuredActions) {
                 if (ca.type === 'observationField' && result.fieldId) return ca.fieldId === result.fieldId.toString();
                 if (ca.type === 'observationField' && result.data && result.data.observation_field_id) return ca.fieldId === result.data.observation_field_id.toString();
                 if (ca.type === 'addToProject' && result.projectId) return ca.projectId === result.projectId.toString();
-                if (ca.type === 'annotation' && result.data && result.data.controlled_attribute_id) return ca.annotationField === result.data.controlled_attribute_id.toString();
+                if (ca.type === 'annotation') {
+                    if (!!ca.disagree !== !!result.disagree) return false;
+                    if (result.annotationField !== undefined) return ca.annotationField === result.annotationField.toString();
+                    if (result.data && result.data.controlled_attribute_id) return ca.annotationField === result.data.controlled_attribute_id.toString();
+                }
                 // Add more specific checks if necessary based on what `performSingleAction` returns
                 return true; // Fallback for simpler actions
             });
@@ -2069,7 +2090,7 @@ function summarizeBulkActionOutcomes(allActionResults, configuredActions) {
             if (originalConfigAction) {
                  if (originalConfigAction.type === 'observationField') actionKey += `-${originalConfigAction.fieldId}`;
                  if (originalConfigAction.type === 'addToProject') actionKey += `-${originalConfigAction.projectId}`;
-                 if (originalConfigAction.type === 'annotation') actionKey += `-${originalConfigAction.annotationField}`;
+                 if (originalConfigAction.type === 'annotation') actionKey += `-${originalConfigAction.annotationField}${originalConfigAction.disagree ? '-disagree' : ''}`;
             } else {
                 console.warn("Could not map result to original configured action:", result);
                 // Use a generic key if mapping fails, though this shouldn't happen often
@@ -2166,7 +2187,9 @@ function createDetailedActionResultsModal(summaryByActionType, actionSetName, sk
         } else if (actionConfig.type === 'annotation') {
             const fieldName = getAnnotationFieldName(actionConfig.annotationField);
             const valueName = getAnnotationValueName(actionConfig.annotationField, actionConfig.annotationValue);
-            actionDisplayName = `Annotation: ${fieldName} = ${valueName}`;
+            actionDisplayName = actionConfig.disagree
+                ? `Downvote Annotation: ${fieldName} = ${valueName}`
+                : `Annotation: ${fieldName} = ${valueName}`;
         } else if (actionConfig.type === 'addTaxonId') {
             actionDisplayName = `Add ID: ${actionConfig.taxonName}`;
         } else if (actionConfig.type === 'addComment') {

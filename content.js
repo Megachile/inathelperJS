@@ -867,6 +867,68 @@ async function voteOnExistingAnnotation(observationId, attributeId, valueId, jwt
     }
 }
 
+async function disagreeWithAnnotation(observationId, attributeId, valueId) {
+    if (!observationId) {
+        return { success: false, error: 'No observation ID provided' };
+    }
+    const jwt = await getJWT();
+    if (!jwt) {
+        return { success: false, error: 'No JWT found' };
+    }
+
+    try {
+        const obsResponse = await safeFetch(`${API_URL}/observations/${observationId}`, {
+            headers: { 'Authorization': `Bearer ${jwt}` }
+        });
+        const obsData = await obsResponse.json();
+        const observation = obsData.results ? obsData.results[0] : null;
+        if (!observation) {
+            return { success: false, error: 'Could not fetch observation' };
+        }
+
+        const targetAnnotation = (observation.annotations || []).find(ann =>
+            ann.controlled_attribute_id === parseInt(attributeId) &&
+            ann.controlled_value_id === parseInt(valueId)
+        );
+
+        if (!targetAnnotation) {
+            // No matching annotation to downvote — treat as a no-op success
+            // (parallels addToProject's noActionNeeded behavior for bulk summaries).
+            return {
+                success: true,
+                noActionNeeded: true,
+                message: 'No matching annotation to downvote',
+                disagree: true
+            };
+        }
+
+        const voteUrl = `${API_URL}/votes/vote/annotation/${targetAnnotation.uuid}`;
+        const voteResponse = await safeFetch(voteUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${jwt}`
+            },
+            body: JSON.stringify({ vote: false })
+        });
+
+        if (voteResponse.ok) {
+            return {
+                success: true,
+                uuid: targetAnnotation.uuid,
+                action: 'disagreed',
+                disagree: true
+            };
+        } else {
+            const errorData = await voteResponse.json().catch(() => ({}));
+            return { success: false, error: 'Failed to vote disagree on annotation', data: errorData };
+        }
+    } catch (error) {
+        console.error('Error disagreeing with annotation:', error);
+        return { success: false, error: safeErrorString(error) };
+    }
+}
+
 async function addObservationToProject(observationId, projectId) {
     if (!observationId) {
         debugLog('No observation ID provided. Please select an observation first.');
@@ -1988,6 +2050,10 @@ async function performSingleAction(action, observationId) {
             }
             return addObservationField(observationId, action.targetFieldId, sourceValue);    
         case 'annotation':
+            if (action.disagree) {
+                const disagreeResult = await disagreeWithAnnotation(observationId, action.annotationField, action.annotationValue);
+                return { ...disagreeResult, annotationVoteUUID: disagreeResult.uuid, disagree: true };
+            }
             const annotationResult = await addAnnotation(observationId, action.annotationField, action.annotationValue);
             return { ...annotationResult, annotationUUID: annotationResult.uuid };
         case 'addToProject':
@@ -3674,7 +3740,10 @@ async function executeBulkAction(selectedActionConfig, modal, isCancelledFunc) {
                     let resultForSummary = { ...actionResult, observationId, action: action.type };
                     if (action.type === 'observationField') resultForSummary.fieldId = action.fieldId;
                     // Add other potential differentiators if actions of same type can vary (e.g. annotation field ID)
-                    if (action.type === 'annotation') resultForSummary.annotationField = action.annotationField;
+                    if (action.type === 'annotation') {
+                        resultForSummary.annotationField = action.annotationField;
+                        resultForSummary.disagree = !!action.disagree;
+                    }
                     // Ensure error is also stored as message for consistency with display code
                     if (!actionResult.success && actionResult.error && !actionResult.message) {
                         resultForSummary.message = actionResult.error;
@@ -3708,7 +3777,8 @@ async function executeBulkAction(selectedActionConfig, modal, isCancelledFunc) {
                         observationId,
                         action: action.type,
                         fieldId: action.type === 'observationField' ? action.fieldId : undefined,
-                        annotationField: action.type === 'annotation' ? action.annotationField : undefined
+                        annotationField: action.type === 'annotation' ? action.annotationField : undefined,
+                        disagree: action.type === 'annotation' ? !!action.disagree : undefined
                     });
                 }
             }
@@ -3828,6 +3898,15 @@ function handleActionResult(result, action, observationId, preliminaryUndoRecord
             );
             if (undoAction) {
                 undoAction.uuid = result.annotationUUID;
+            }
+        } else if (action.type === 'annotation' && action.disagree && result.annotationVoteUUID) {
+            const undoAction = preliminaryUndoRecord.observations[observationId].undoActions.find(
+                ua => ua.type === 'removeAnnotationVote' &&
+                    ua.attributeId === action.annotationField &&
+                    ua.valueId === action.annotationValue
+            );
+            if (undoAction) {
+                undoAction.uuid = result.annotationVoteUUID;
             }
         } else if (action.type === 'addTaxonId' && result.identificationUUID) {
             const undoAction = preliminaryUndoRecord.observations[observationId].undoActions.find(
@@ -4110,12 +4189,21 @@ async function generatePreliminaryUndoRecord(action, observationIds, preActionSt
                     };
                     break;
                 case 'annotation':
-                    undoAction = {
-                        type: 'removeAnnotation',
-                        attributeId: actionItem.annotationField,
-                        valueId: actionItem.annotationValue,
-                        uuid: null // This will be filled in after the action is performed
-                    };
+                    if (actionItem.disagree) {
+                        undoAction = {
+                            type: 'removeAnnotationVote',
+                            attributeId: actionItem.annotationField,
+                            valueId: actionItem.annotationValue,
+                            uuid: null // Filled in after the disagree vote is recorded
+                        };
+                    } else {
+                        undoAction = {
+                            type: 'removeAnnotation',
+                            attributeId: actionItem.annotationField,
+                            valueId: actionItem.annotationValue,
+                            uuid: null // Filled in after the action is performed
+                        };
+                    }
                     break;
                 case 'addToProject':
                     try {
@@ -4975,7 +5063,7 @@ function updateActionDescription(actionSelect) {
                         // Find the field name by ID
                         let annotationFieldName = 'Unknown';
                         let annotationValueName = 'Unknown';
-                        
+
                         for (const [key, value] of Object.entries(controlledTerms)) {
                             if (value.id === parseInt(action.annotationField)) {
                                 annotationFieldName = key;
@@ -4989,7 +5077,9 @@ function updateActionDescription(actionSelect) {
                                 break;
                             }
                         }
-                        actionDesc = `Add annotation: ${annotationFieldName} = ${annotationValueName}`;
+                        actionDesc = action.disagree
+                            ? `Downvote annotation: ${annotationFieldName} = ${annotationValueName}`
+                            : `Add annotation: ${annotationFieldName} = ${annotationValueName}`;
                         break;
                     case 'addToProject':
                         actionDesc = `${action.remove ? 'Remove from' : 'Add to'} project: ${action.projectName}`;
@@ -6273,7 +6363,9 @@ async function createValidationModal(validationResults, selectedAction, onConfir
                         // Find the field name by ID
                         let annotationFieldName = getAnnotationFieldName(action.annotationField); // Ensure getAnnotationFieldName is available
                         let annotationValueName = getAnnotationValueName(action.annotationField, action.annotationValue); // Ensure getAnnotationValueName is available
-                        actionDesc = `Add annotation: ${annotationFieldName} = ${annotationValueName}`;
+                        actionDesc = action.disagree
+                            ? `Downvote annotation: ${annotationFieldName} = ${annotationValueName}`
+                            : `Add annotation: ${annotationFieldName} = ${annotationValueName}`;
                         break;
                     case 'addToProject':
                         actionDesc = `${action.remove ? 'Remove from' : 'Add to'} project: ${action.projectName}`;
@@ -6682,7 +6774,9 @@ function createActionDescription(selectedAction) {
                     case 'annotation':
                         const fieldName = getAnnotationFieldName(action.annotationField);
                         const valueName = getAnnotationValueName(action.annotationField, action.annotationValue);
-                        actionDesc = `Add annotation: ${fieldName} = ${valueName}`;
+                        actionDesc = action.disagree
+                            ? `Downvote annotation: ${fieldName} = ${valueName}`
+                            : `Add annotation: ${fieldName} = ${valueName}`;
                         break;
                     case 'addToProject':
                         actionDesc = `${action.remove ? 'Remove from' : 'Add to'} project: ${action.projectName}`;
