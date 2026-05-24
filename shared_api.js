@@ -1165,6 +1165,44 @@ async function makeAPIRequest(endpoint, options = {}) {
     throw new Error('makeAPIRequest: retry loop exhausted without resolving');
 }
 
+// Wraps `fetch` with 429 retry + Retry-After honoring + transient-network retry.
+// Returns the Response object as-is on success or after exhausting retries — lets
+// callers preserve their own non-OK handling (e.g. addTag's 403/410 mapping) while
+// getting transparent throttle backoff. Use this instead of raw `fetch` in any handler
+// that may run in a parallelized bulk loop. (makeAPIRequest already has its own retry;
+// don't double-wrap.)
+async function safeFetch(url, options = {}) {
+    const maxRetries = options.maxRetries ?? 3;
+    const baseDelay = options.baseDelay ?? 200;
+    const fetchOptions = {...options};
+    delete fetchOptions.maxRetries;
+    delete fetchOptions.baseDelay;
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        let response;
+        try {
+            response = await fetch(url, fetchOptions);
+        } catch (networkError) {
+            if (attempt < maxRetries) {
+                await new Promise(r => setTimeout(r, baseDelay * Math.pow(2, attempt)));
+                continue;
+            }
+            throw networkError;
+        }
+        if (response.status === 429 && attempt < maxRetries) {
+            const ra = response.headers.get('Retry-After');
+            const raSeconds = ra ? parseInt(ra, 10) : NaN;
+            const delay = !isNaN(raSeconds) && raSeconds > 0
+                ? raSeconds * 1000
+                : baseDelay * Math.pow(2, attempt);
+            await new Promise(r => setTimeout(r, delay));
+            continue;
+        }
+        return response;
+    }
+    throw new Error('safeFetch: retry loop exhausted');
+}
+
 // Run `taskFn` over each item in `items` with a bounded worker pool. Used to parallelize
 // per-obs API calls in bulk-action paths without firing N requests at once. Empirically
 // iNat tolerates conc=8 cleanly (35-39 req/s sustained on authenticated GETs, zero 429s
@@ -1489,7 +1527,7 @@ async function markObservationReviewed(observationId, markAsReviewed) {
     // Step 1: Check the current reviewed state
     const checkUrl = `${API_URL}/observations/${observationId}`;
     try {
-        const response = await fetch(checkUrl, {
+        const response = await safeFetch(checkUrl, {
             method: 'GET',
             headers: {
                 'Authorization': `Bearer ${jwt}`,
@@ -1516,7 +1554,7 @@ async function markObservationReviewed(observationId, markAsReviewed) {
         const method = markAsReviewed ? 'POST' : 'DELETE';
         const body = markAsReviewed ? JSON.stringify({ reviewed: "true" }) : null;
 
-        const actionResponse = await fetch(url, {
+        const actionResponse = await safeFetch(url, {
             method,
             headers: {
                 'Authorization': `Bearer ${jwt}`,
@@ -1605,7 +1643,7 @@ async function performProjectAction(observationId, projectId, remove = false) {
                 };
                 debugLog(`Making DIRECT POST to: ${projectAddUrl} with body:`, JSON.stringify(projectAddData).substring(0,100) + "...");
 
-                const response = await fetch(projectAddUrl, {
+                const response = await safeFetch(projectAddUrl, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',

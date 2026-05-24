@@ -681,7 +681,7 @@ async function addObservationField(observationId, fieldId, value, button = null)
         };
 
         try {
-            const response = await fetch(requestUrl, options);
+            const response = await safeFetch(requestUrl, options);
             if (!response.ok) {
                 const text = await response.text();
                 throw new Error(`Network response was not ok. Status: ${response.status}, Body: ${text}`);
@@ -765,7 +765,7 @@ async function addAnnotation(observationId, attributeId, valueId) {
 async function voteOnExistingAnnotation(observationId, attributeId, valueId, jwt) {
     try {
         // Fetch the observation to find the existing annotation UUID
-        const obsResponse = await fetch(`${API_URL}/observations/${observationId}`, {
+        const obsResponse = await safeFetch(`${API_URL}/observations/${observationId}`, {
             headers: { 'Authorization': `Bearer ${jwt}` }
         });
         const obsData = await obsResponse.json();
@@ -790,13 +790,13 @@ async function voteOnExistingAnnotation(observationId, attributeId, valueId, jwt
             if (conflictingAnnotation) {
                 debugLog(`Found conflicting annotation (value ${conflictingAnnotation.controlled_value_id} vs desired ${valueId}), attempting to replace`);
                 // Try to delete the conflicting annotation (only works if it's ours)
-                const deleteResponse = await fetch(`${API_URL}/annotations/${conflictingAnnotation.uuid}`, {
+                const deleteResponse = await safeFetch(`${API_URL}/annotations/${conflictingAnnotation.uuid}`, {
                     method: 'DELETE',
                     headers: { 'Authorization': `Bearer ${jwt}` }
                 });
                 if (deleteResponse.ok) {
                     // DELETE succeeded - try to re-add with new value
-                    const retryResponse = await fetch(`${API_URL}/annotations`, {
+                    const retryResponse = await safeFetch(`${API_URL}/annotations`, {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
@@ -824,7 +824,7 @@ async function voteOnExistingAnnotation(observationId, attributeId, valueId, jwt
                     // Can't replace annotation, vote to disagree instead
                     debugLog(`Voting to disagree on conflicting annotation`);
                     const voteUrl = `${API_URL}/votes/vote/annotation/${conflictingAnnotation.uuid}`;
-                    const voteResponse = await fetch(voteUrl, {
+                    const voteResponse = await safeFetch(voteUrl, {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
@@ -844,7 +844,7 @@ async function voteOnExistingAnnotation(observationId, attributeId, valueId, jwt
 
         // Vote in agreement with the existing annotation
         const voteUrl = `${API_URL}/votes/vote/annotation/${existingAnnotation.uuid}`;
-        const voteResponse = await fetch(voteUrl, {
+        const voteResponse = await safeFetch(voteUrl, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -932,7 +932,7 @@ async function addComment(observationId, commentBody) {
     };
 
     try {
-        const response = await fetch(url, {
+        const response = await safeFetch(url, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -969,7 +969,7 @@ async function addTag(observationId, tagText) {
 
     try {
         // First fetch existing tags so we don't overwrite them
-        const obsResponse = await fetch(`${API_URL}/observations/${observationId}`, {
+        const obsResponse = await safeFetch(`${API_URL}/observations/${observationId}`, {
             headers: { 'Authorization': `Bearer ${jwt}` }
         });
         const obsData = await obsResponse.json();
@@ -990,7 +990,7 @@ async function addTag(observationId, tagText) {
 
         // Update observation with new tag list
         const updateUrl = `${API_URL}/observations/${observationId}`;
-        const response = await fetch(updateUrl, {
+        const response = await safeFetch(updateUrl, {
             method: 'PUT',
             headers: {
                 'Content-Type': 'application/json',
@@ -1047,7 +1047,7 @@ async function addTaxonId(observationId, taxonId, comment = '', disagreement = f
     };
 
     try {
-        const response = await fetch(url, {
+        const response = await safeFetch(url, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -1096,7 +1096,7 @@ async function handleQualityMetricAPI(observationId, metric, vote) {
     }
 
     try {
-        const response = await fetch(url, {
+        const response = await safeFetch(url, {
             method: method,
             headers: {
                 'Content-Type': 'application/json',
@@ -1104,11 +1104,11 @@ async function handleQualityMetricAPI(observationId, metric, vote) {
             },
             body: body
         });
-        
+
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
-        
+
         const responseData = await response.json();
         debugLog(`Quality metric ${metric} ${vote} successful:`, responseData);
 
@@ -1585,7 +1585,7 @@ async function updateQualityMetrics(observationId) {
         }
 
         const qualityMetricsUrl = `${API_URL}/observations/${observationId}/quality_metrics?ttl=-1`;
-        const response = await fetch(qualityMetricsUrl, {
+        const response = await safeFetch(qualityMetricsUrl, {
             headers: {
                 'Authorization': `Bearer ${jwt}`
             }
