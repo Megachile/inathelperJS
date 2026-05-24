@@ -1165,13 +1165,15 @@ async function makeAPIRequest(endpoint, options = {}) {
     throw new Error('makeAPIRequest: retry loop exhausted without resolving');
 }
 
-// Concurrency for bulk-action API parallelism (validation loop, prevention loop,
-// per-obs action loop). Empirically iNat's /v1 tolerates conc=8 at 35-39 req/s
-// sustained on auth GETs with zero 429s; bumping to 16 in production to push the
-// ceiling. Each safeFetch / makeAPIRequest still retries on 429 with Retry-After,
-// so overshoot here costs latency, not correctness. Drop back if production traffic
-// shows persistent 429 floods.
-const BULK_CONCURRENCY = 16;
+// Concurrency for bulk-action API parallelism. GET-heavy loops (validation,
+// prevention) and POST-heavy loops (per-obs action loop) hit different iNat
+// ceilings: empirically GETs sustain 35-39 req/s at conc=8 with headroom for
+// more, while POSTs saturate iNat's write pipeline at ~7-8 req/s effective
+// regardless of how many we send in parallel (verified: conc=8 and conc=16
+// gave identical 27/28s wall-clock for 200-obs OF bulks). Use separate constants
+// so GET-heavy phases can push harder without overshooting on writes.
+const BULK_CONCURRENCY_READ = 16;
+const BULK_CONCURRENCY_WRITE = 8;
 
 // Wraps `fetch` with 429 retry + Retry-After honoring + transient-network retry.
 // Returns the Response object as-is on success or after exhausting retries — lets
