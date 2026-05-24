@@ -3551,10 +3551,13 @@ async function executeBulkAction(selectedActionConfig, modal, isCancelledFunc) {
         debugLog('Pre-action states:', preActionStates);
 
         const preliminaryUndoRecord = await generatePreliminaryUndoRecord(selectedActionConfig, observationIds, preActionStates);
+        // Prevention check is read-only per obs; parallelize at conc=8 (well under
+        // iNat's empirical ceiling). For 200 obs with prevent-field-follow enabled
+        // this drops from ~30s to ~5s.
         const preventionStates = {};
-        for (const observationId of observationIds) {
+        await runWithConcurrency(observationIds, 8, async (observationId) => {
             preventionStates[observationId] = await handleFollowAndReviewPrevention(observationId, selectedActionConfig.actions, []);
-        }
+        });
 
         for (const observationId of observationIds) {
             if (checkCancelled()) {

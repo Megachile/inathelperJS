@@ -1165,6 +1165,28 @@ async function makeAPIRequest(endpoint, options = {}) {
     throw new Error('makeAPIRequest: retry loop exhausted without resolving');
 }
 
+// Run `taskFn` over each item in `items` with a bounded worker pool. Used to parallelize
+// per-obs API calls in bulk-action paths without firing N requests at once. Empirically
+// iNat tolerates conc=8 cleanly (35-39 req/s sustained on authenticated GETs, zero 429s
+// across 1000 reqs). Results array preserves input order; thrown exceptions per item are
+// captured as `{__error: e}` rather than rejecting the whole batch.
+async function runWithConcurrency(items, concurrency, taskFn) {
+    const results = new Array(items.length);
+    let next = 0;
+    const worker = async () => {
+        while (next < items.length) {
+            const i = next++;
+            try {
+                results[i] = await taskFn(items[i], i);
+            } catch (e) {
+                results[i] = { __error: e };
+            }
+        }
+    };
+    await Promise.all(Array.from({length: Math.min(concurrency, items.length)}, () => worker()));
+    return results;
+}
+
 // Initialize and test JWT when the script loads
 (async function() {
     const jwt = await getJWT();
