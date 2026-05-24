@@ -1385,17 +1385,65 @@ function normalizeLongitude(lng) {
 }
 
 function saveInputs() {
-    const savedState = JSON.parse(localStorage.getItem('urlGenState') || '{}');
-
+    const savedState = {};
     const actionsContainer = document.getElementById('actionsContainer');
+
+    // Static inputs: every <input>/<select>/<textarea> with an id, except those
+    // inside actionsContainer (those are handled by dynamicFields below) and
+    // grouped checkboxes/radios that get serialized separately (quality_grade,
+    // reviewed, searchOn, licenses, observationSources, custom lists, bbox).
+    savedState.inputs = {};
+    const groupedNames = new Set(['quality_grade', 'reviewed', 'searchOn']);
+    document.querySelectorAll('input[id], select[id], textarea[id]').forEach(el => {
+        if (!el.id) return;
+        if (actionsContainer && actionsContainer.contains(el)) return;
+        if (groupedNames.has(el.name)) return;
+        // License and observation-source checkboxes are saved via their dedicated keys.
+        if (el.closest('#photoLicenses, #soundLicenses, #observationSources, #customListsContainer')) return;
+        // Geographic bbox inputs are saved via geographicBoundingBox.
+        if (['swlat', 'swlng', 'nelat', 'nelng', 'circleLat', 'circleLng', 'circleRadius'].includes(el.id)) return;
+        if (el.type === 'checkbox' || el.type === 'radio') {
+            savedState.inputs[el.id] = el.checked;
+        } else {
+            savedState.inputs[el.id] = el.value;
+        }
+    });
+
+    savedState.qualityGrade = Array.from(
+        document.querySelectorAll('input[name="quality_grade"]:checked')
+    ).map(el => el.value);
+
+    const reviewedEl = document.querySelector('input[name="reviewed"]:checked');
+    if (reviewedEl) savedState.reviewedStatus = reviewedEl.value;
+
+    const searchOnEl = document.querySelector('input[name="searchOn"]:checked');
+    if (searchOnEl) savedState.searchOn = searchOnEl.value;
+
+    savedState.licenses = {
+        photo: Array.from(document.querySelectorAll('#photoLicenses input:checked')).map(el => el.value),
+        sound: Array.from(document.querySelectorAll('#soundLicenses input:checked')).map(el => el.value)
+    };
+
+    savedState.observationSources = Array.from(
+        document.querySelectorAll('#observationSources input:checked')
+    ).map(el => el.value);
+
+    savedState.geographicBoundingBox = {};
+    ['swlat', 'swlng', 'nelat', 'nelng', 'circleLat', 'circleLng', 'circleRadius'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) savedState.geographicBoundingBox[id] = el.value;
+    });
+
+    savedState.selectedCustomLists = Array.from(
+        document.querySelectorAll('#customListsContainer input[type="checkbox"]:checked')
+    ).map(el => el.value);
+
+    savedState.dynamicFields = [];
     if (actionsContainer) {
-        // Reset the dynamic fields array
-        savedState.dynamicFields = [];
-        
         actionsContainer.querySelectorAll('.action-box').forEach(actionBox => {
             const actionType = actionBox.querySelector('.action-type').textContent;
             const inputs = Array.from(actionBox.querySelectorAll('input, select'));
-            
+
             const fieldData = {
                 type: actionType,
                 disabled: actionBox.classList.contains('disabled'),
@@ -1406,8 +1454,7 @@ function saveInputs() {
             if (['taxon', 'user', 'project', 'place', 'identifier'].includes(actionType)) {
                 const nameInput = inputs.find(input => input.id?.startsWith(actionType) && !input.id?.includes('Id'));
                 const idInput = inputs.find(input => input.id?.includes('Id'));
-                
-                // Only save if both name and ID exist
+
                 if (nameInput?.value && idInput?.value) {
                     fieldData.inputs = inputs.map(input => ({
                         type: input.type,
@@ -1417,7 +1464,6 @@ function saveInputs() {
                     }));
                 }
             } else {
-                // For other field types, save all inputs as before
                 fieldData.inputs = inputs.map(input => ({
                     type: input.type,
                     value: input.type === 'checkbox' ? input.checked : input.value,
@@ -1426,7 +1472,6 @@ function saveInputs() {
                 }));
             }
 
-            // Only add the field if we have inputs to save
             if (fieldData.inputs.length > 0) {
                 savedState.dynamicFields.push(fieldData);
             }
@@ -1511,12 +1556,19 @@ function loadInputs() {
         anySourceCheckbox.checked = !specificSourceSelected;
     }
 
-    // Load geographic bounding box
+    // Load geographic bounding box (and circle, same key)
     Object.keys(savedState.geographicBoundingBox || {}).forEach(id => {
         const input = document.getElementById(id);
         if (input) {
             input.value = savedState.geographicBoundingBox[id];
         }
+    });
+
+    // Trigger change events on visibility-controlling radios so the right
+    // containers show after a restore (date selectors, geo search type, etc.)
+    ['observedDateType', 'addedDateType', 'geoSearchType'].forEach(name => {
+        const checked = document.querySelector(`input[name="${name}"]:checked`);
+        if (checked) checked.dispatchEvent(new Event('change', {bubbles: true}));
     });
 
         // Load dynamic fields with their disabled states
