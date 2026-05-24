@@ -3554,7 +3554,7 @@ async function executeBulkAction(selectedActionConfig, modal, isCancelledFunc) {
         // Prevention check is read-only per obs (subscription / observation GETs
         // when prevent-* options are on, no API calls otherwise). Uses READ concurrency.
         const preventionStates = {};
-        await runWithConcurrency(observationIds, BULK_CONCURRENCY_READ, async (observationId) => {
+        await runWithConcurrency(observationIds, BULK_CONCURRENCY, async (observationId) => {
             preventionStates[observationId] = await handleFollowAndReviewPrevention(observationId, selectedActionConfig.actions, []);
         });
 
@@ -3565,7 +3565,7 @@ async function executeBulkAction(selectedActionConfig, modal, isCancelledFunc) {
         // Cancellation: workers can't break out of runWithConcurrency, so use a shared flag
         // and let in-flight workers drain.
         let cancelledMidLoop = false;
-        await runWithConcurrency(observationIds, BULK_CONCURRENCY_WRITE, async (observationId) => {
+        await runWithConcurrency(observationIds, BULK_CONCURRENCY, async (observationId) => {
             if (cancelledMidLoop) return;
             if (checkCancelled()) {
                 cancelledMidLoop = true;
@@ -5603,7 +5603,7 @@ async function validateBulkAction(selectedAction, observationIds, getIsCancelled
     // its own slot in results.toProcess / results.toSkip / results.existingValues —
     // safe under JS's single-threaded event loop. Same pattern as Tier B/C.
     let validationCancelled = false;
-    await runWithConcurrency(observationIds, BULK_CONCURRENCY_READ, async (observationId) => {
+    await runWithConcurrency(observationIds, BULK_CONCURRENCY, async (observationId) => {
         if (validationCancelled) return;
         if (getIsCancelled && getIsCancelled()) {
             validationCancelled = true;
