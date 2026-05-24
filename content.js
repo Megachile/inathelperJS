@@ -3559,10 +3559,18 @@ async function executeBulkAction(selectedActionConfig, modal, isCancelledFunc) {
             preventionStates[observationId] = await handleFollowAndReviewPrevention(observationId, selectedActionConfig.actions, []);
         });
 
-        for (const observationId of observationIds) {
+        // Tier C: parallelize the per-obs action loop. Each obs's work mutates per-obs
+        // slots of shared structures (allActionResults push, preliminaryUndoRecord.observations[id],
+        // overwrittenValues[id]) — safe under JS's single-threaded event loop. The per-action
+        // inner loop stays sequential because actions for one obs must run in declared order.
+        // Cancellation: workers can't break out of runWithConcurrency, so use a shared flag
+        // and let in-flight workers drain.
+        let cancelledMidLoop = false;
+        await runWithConcurrency(observationIds, 8, async (observationId) => {
+            if (cancelledMidLoop) return;
             if (checkCancelled()) {
-                if(statusElement) statusElement.textContent = 'Action cancelled. Processing completed actions...';
-                break;
+                cancelledMidLoop = true;
+                return;
             }
 
             // Skip observations that don't have pre-action states (failed to fetch)
@@ -3578,7 +3586,7 @@ async function executeBulkAction(selectedActionConfig, modal, isCancelledFunc) {
                 processedObservations++;
                 if (progressFill) await updateProgressBar(progressFill, (processedObservations / totalObservations) * 100);
                 if (statusElement) statusElement.textContent = `Processing observation ${processedObservations}/${totalObservations}...`;
-                continue;
+                return;
             }
 
             let observationSkippedThisIterationDueToSafeMode = false;
@@ -3599,7 +3607,7 @@ async function executeBulkAction(selectedActionConfig, modal, isCancelledFunc) {
                                 observationId,
                                 action: action.type,
                                 fieldId: action.fieldId,
-                                success: false, 
+                                success: false,
                                 message: 'Skipped by Safe Mode due to existing value.',
                                 reason: 'safe_mode_skip'
                             });
@@ -3615,10 +3623,10 @@ async function executeBulkAction(selectedActionConfig, modal, isCancelledFunc) {
                      processedObservations++;
                      if (progressFill) await updateProgressBar(progressFill, (processedObservations / totalObservations) * 100);
                      if (statusElement) statusElement.textContent = `Processing observation ${processedObservations}/${totalObservations}...`;
-                     continue; // Move to the next observationId
+                     return; // Move to the next observationId
                  }
             }
-            
+
             // If not skipped by safe mode, proceed with actions
             const currentObservationResults = [];
             for (const action of selectedActionConfig.actions) {
@@ -3728,7 +3736,11 @@ async function executeBulkAction(selectedActionConfig, modal, isCancelledFunc) {
             processedObservations++;
             if (progressFill) await updateProgressBar(progressFill, (processedObservations / totalObservations) * 100);
             if (statusElement) statusElement.textContent = `Processing observation ${processedObservations}/${totalObservations}...`;
-        } // End of for...of observationIds loop
+        }); // End of runWithConcurrency over observationIds
+
+        if (cancelledMidLoop && statusElement) {
+            statusElement.textContent = 'Action cancelled. Processing completed actions...';
+        }
 
         // Diagnostic block — gated behind debugMode; the missing-observation
         // warnings below are kept as console.warn since they indicate a real
