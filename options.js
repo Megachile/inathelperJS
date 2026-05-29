@@ -1039,7 +1039,8 @@ function addActionToForm(action = null) {
         </div>
         <div class="projectInputs" style="display:none;">
             <input type="text" class="projectName" placeholder="Project Name">
-            <input type="number" class="projectId" placeholder="Project ID" readonly>
+            <input type="number" class="projectId" placeholder="Project ID (type to enter manually)">
+            <div class="projectIdStatus" style="font-size: 12px; margin-top: 2px; min-height: 14px;"></div>
             <div class="checkboxContainer" style="display: flex; align-items: center; margin-top: 10px;">
                 <input type="checkbox" id="removeFromProject-${Date.now()}" class="removeFromProject">
                 <label for="removeFromProject-${Date.now()}" style="margin-left: 5px; font-size: 14px; cursor: pointer;">
@@ -1198,8 +1199,41 @@ function addActionToForm(action = null) {
 
     const projectNameInput = actionDiv.querySelector('.projectName');
     const projectIdInput = actionDiv.querySelector('.projectId');
+    const projectIdStatus = actionDiv.querySelector('.projectIdStatus');
     setupAutocompleteDropdown(projectNameInput, lookupProject, (result) => {
         projectIdInput.value = result.id;
+        if (projectIdStatus) projectIdStatus.textContent = '';
+    });
+
+    // Allow manual project ID entry as an escape hatch for projects the
+    // dropdown can't surface (#48). On a valid ID, auto-fill the name so
+    // validation, undo records, and summaries stay correct.
+    let projectIdLookupToken = 0;
+    projectIdInput.addEventListener('input', () => {
+        const id = projectIdInput.value.trim();
+        if (!projectIdStatus) return;
+        if (!id) {
+            projectIdStatus.textContent = '';
+            return;
+        }
+        const token = ++projectIdLookupToken;
+        projectIdStatus.style.color = '#666';
+        projectIdStatus.textContent = 'Looking up project...';
+        clearTimeout(projectIdInput._lookupTimeout);
+        projectIdInput._lookupTimeout = setTimeout(() => {
+            lookupProjectById(id)
+                .then(project => {
+                    if (token !== projectIdLookupToken) return; // stale response
+                    projectNameInput.value = project.title;
+                    projectIdStatus.style.color = 'green';
+                    projectIdStatus.textContent = `Found: ${project.title}`;
+                })
+                .catch(error => {
+                    if (token !== projectIdLookupToken) return;
+                    projectIdStatus.style.color = '#c0392b';
+                    projectIdStatus.textContent = `No project found with ID ${id}`;
+                });
+        }, 400);
     });
 
     const annotationField = actionDiv.querySelector('.annotationField');

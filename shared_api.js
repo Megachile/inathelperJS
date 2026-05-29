@@ -148,12 +148,15 @@ function lookupTaxon(query, per_page = 10) {
 }
 
 function lookupProject(query, perPage = 10) {
-    const baseUrl = `${API_URL}/projects`;
+    // Use the purpose-built autocomplete endpoint: it is relevance-ranked, so
+    // common-word project names (e.g. "Blue!") surface in the top results.
+    // The general /projects search returned observation_count=null for every
+    // hit, making order_by=observation_count meaningless and burying matches
+    // past per_page (#48).
+    const baseUrl = `${API_URL}/projects/autocomplete`;
     const params = new URLSearchParams({
         q: query,
-        per_page: perPage,
-        order_by: 'observation_count',
-        order: 'desc'
+        per_page: perPage
     });
     const url = `${baseUrl}?${params.toString()}`;
 
@@ -163,6 +166,26 @@ function lookupProject(query, perPage = 10) {
             ...project,
             displayName: `${project.title}`
         })));
+}
+
+// Resolve a single project by its numeric ID. Used when a user types a project
+// ID directly into the Add-to-Project action instead of picking from the
+// dropdown (#48). Resolves to the project object, or rejects if not found.
+function lookupProjectById(projectId) {
+    const url = `${API_URL}/projects/${encodeURIComponent(projectId)}`;
+    return fetch(url)
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (data.results && data.results.length > 0) {
+                return data.results[0];
+            }
+            throw new Error(`No project found with ID ${projectId}`);
+        });
 }
 
 function lookupObservationField(name, perPage = 10) {

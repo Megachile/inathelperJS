@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.3.1] - 2026-05-28
+
+First post-launch user-reported fix: the Add to/Remove from Project action couldn't find some projects by name, and the Project ID field was visible but unusable.
+
+### Fixed
+- **Project dropdown surfaces common-word projects** (#48) — `lookupProject` now queries iNaturalist's relevance-ranked `/projects/autocomplete` endpoint instead of the general `/projects` search sorted by `observation_count` (which came back `null`, so the sort was meaningless and buried matches past `per_page`). The reported case — typing "blue" to find the project [Blue!](https://www.inaturalist.org/projects/blue) — now works.
+
+### Added
+- **Manual project ID entry** (#48) — the Project ID field in the Add to/Remove from Project action is no longer read-only. Typing an ID looks it up via the new `lookupProjectById` helper and auto-fills the project name (with inline success/error feedback), as an escape hatch for any project the dropdown still can't surface.
+
 ## [3.3.0] - 2026-05-23
 
 Performance + new annotation downvote action. Bulk actions on 200 observations went from ~4-5 minutes to ~33 seconds — roughly 8× faster — by parallelizing the validation, prevention, and per-obs action loops, switching the pre-action prefetch to the v2 search endpoint with selective fields, and eliminating waste in the post-action settle phase.
