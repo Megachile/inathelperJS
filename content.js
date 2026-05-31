@@ -219,13 +219,29 @@ function toggleBulkActionVisibility() {
     }
 }
 
+// On macOS, holding Option (Alt) turns the keystroke into a special character,
+// so event.key for Option+N is the dead-key "˜"/"Dead" rather than "n". That made
+// every Alt-based shortcut (rotate buttons, etc.) unreachable on Mac (issue #49).
+// event.code reports the physical key (e.g. "KeyN", "Digit1") regardless of Option,
+// so fall back to it whenever Alt is held to recover the intended letter/digit.
+function getShortcutKey(event) {
+    if (event.altKey && event.code) {
+        const letter = event.code.match(/^Key([A-Z])$/);
+        if (letter) return letter[1].toLowerCase();
+        const digit = event.code.match(/^Digit([0-9])$/);
+        if (digit) return digit[1];
+    }
+    return (event.key || '').toLowerCase();
+}
+
 // In content.js
 function handleAllShortcuts(event) {
+    const shortcutKey = getShortcutKey(event);
     const activeElement = document.activeElement;
     const isTyping = activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA' || activeElement.isContentEditable;
 
     // Alt+M for bulk action mode toggle is always available
-    if (event.altKey && !event.ctrlKey && !event.shiftKey && event.key.toLowerCase() === 'm') {
+    if (event.altKey && !event.ctrlKey && !event.shiftKey && shortcutKey === 'm') {
         event.preventDefault();
         if (bulkActionModeEnabled) {
             disableBulkActionMode();
@@ -245,7 +261,7 @@ function handleAllShortcuts(event) {
             // Check for custom action shortcuts to SELECT an item in the dropdown
             for (const buttonConfig of currentAvailableActions) { // Iterate over actions available in the modal
                 if (buttonConfig.shortcut &&
-                    event.key.toLowerCase() === buttonConfig.shortcut.key.toLowerCase() &&
+                    shortcutKey === buttonConfig.shortcut.key.toLowerCase() &&
                     event.ctrlKey === !!buttonConfig.shortcut.ctrlKey &&
                     event.shiftKey === !!buttonConfig.shortcut.shiftKey &&
                     event.altKey === !!buttonConfig.shortcut.altKey) {
@@ -269,42 +285,42 @@ function handleAllShortcuts(event) {
 
     // Process standard non-modal shortcuts if not typing or modal not handled above
     if (!isTyping || !isActionSelectModalOpen) { // Ensure these don't fire if modal handled it or typing in general
-        if (event.shiftKey && !event.altKey && !event.ctrlKey && event.key.toLowerCase() === 'b') {
+        if (event.shiftKey && !event.altKey && !event.ctrlKey && shortcutKey === 'b') {
             toggleButtonVisibility();
             return;
         }
-        if (event.altKey && !event.shiftKey && !event.ctrlKey && event.key.toLowerCase() === 'n') {
+        if (event.altKey && !event.shiftKey && !event.ctrlKey && shortcutKey === 'n') {
             cycleButtonPosition();
             return;
         }
-        if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'r') {
+        if ((event.ctrlKey || event.metaKey) && event.shiftKey && shortcutKey === 'r') {
             event.preventDefault();
             toggleRefresh();
             return;
         }
-        if (event.altKey && !event.shiftKey && !event.ctrlKey && event.key.toLowerCase() === 'h') {
+        if (event.altKey && !event.shiftKey && !event.ctrlKey && shortcutKey === 'h') {
             event.preventDefault();
             toggleShortcutList();
             return;
         }
-        if (event.shiftKey && !event.altKey && !event.ctrlKey && event.key.toLowerCase() === 'v') {
+        if (event.shiftKey && !event.altKey && !event.ctrlKey && shortcutKey === 'v') {
             event.preventDefault();
             toggleBulkActionVisibility();
             return;
         }
-        if (event.altKey && !event.shiftKey && !event.ctrlKey && event.key.toLowerCase() === 's') { // Cycle sets
+        if (event.altKey && !event.shiftKey && !event.ctrlKey && shortcutKey === 's') { // Cycle sets
              event.preventDefault();
              cycleConfigurationSet();
              return;
         }
-        if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === 'a') {
+        if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && shortcutKey === 'a') {
             if (bulkActionModeEnabled) {
                 event.preventDefault();
                 selectAllObservations();
                 return;
             }
         }
-        if ((event.ctrlKey || event.metaKey) && event.shiftKey && !event.altKey && event.key.toLowerCase() === 'a') {
+        if ((event.ctrlKey || event.metaKey) && event.shiftKey && !event.altKey && shortcutKey === 'a') {
             if (bulkActionModeEnabled) {
                 event.preventDefault();
                 clearSelection();
@@ -324,7 +340,7 @@ function handleAllShortcuts(event) {
                 const buttonToClick = bulkActionModeEnabled ? null : item.button; // Button element for single mode
 
                 if (shortcut && shortcut.key &&
-                    event.key.toLowerCase() === shortcut.key.toLowerCase() &&
+                    shortcutKey === shortcut.key.toLowerCase() &&
                     event.ctrlKey === !!shortcut.ctrlKey &&
                     event.shiftKey === !!shortcut.shiftKey &&
                     event.altKey === !!shortcut.altKey) {
@@ -5149,7 +5165,7 @@ function getQualityMetricName(metric) {
 
 // Add keyboard shortcut to cycle through sets
 document.addEventListener('keydown', function(event) {
-    if (event.altKey && event.key === 's') {  // Alt+S to switch sets
+    if (event.altKey && getShortcutKey(event) === 's') {  // Alt+S to switch sets
         event.preventDefault();
         cycleConfigurationSet();
     }

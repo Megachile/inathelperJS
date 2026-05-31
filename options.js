@@ -537,11 +537,11 @@ function extractActionsFromForm() {
 
         switch (actionType) {
             case 'follow':
-                action.follow = actionDiv.querySelector('input[name^="followToggle"]:checked').value; // Extract "follow" or "unfollow"
+                action.follow = actionDiv.querySelector('input[name^="followToggle"]:checked')?.value || 'follow'; // Extract "follow" or "unfollow"
                 break;
             case 'reviewed':
-                action.reviewed = actionDiv.querySelector('input[name^="reviewedToggle"]:checked').value; // Extract "mark" or "unmark"
-                break;                  
+                action.reviewed = actionDiv.querySelector('input[name^="reviewedToggle"]:checked')?.value || 'mark'; // Extract "mark" or "unmark"
+                break;
             case 'withdrawId' :
                 break;
             case 'observationField':
@@ -555,8 +555,8 @@ function extractActionsFromForm() {
                 action.fieldAllowedValues = actionDiv.querySelector('.fieldAllowedValues')?.value || '';
                 break;
             case 'annotation':
-                action.annotationField = actionDiv.querySelector('.annotationField').value;
-                action.annotationValue = actionDiv.querySelector('.annotationValue').value;
+                action.annotationField = actionDiv.querySelector('.annotationField')?.value || '';
+                action.annotationValue = actionDiv.querySelector('.annotationValue')?.value || '';
                 action.disagree = actionDiv.querySelector('.annotationDisagree')?.checked || false;
                 break;
             case 'addToProject':
@@ -901,10 +901,13 @@ function populateActionInputs(actionDiv, action) {
             if (actionDiv.querySelector('.fieldAllowedValues')) actionDiv.querySelector('.fieldAllowedValues').value = action.fieldAllowedValues || '';
             break;
         case 'annotation':
-            actionDiv.querySelector('.annotationField').value = action.annotationField || '';
+            const annotationField = actionDiv.querySelector('.annotationField');
             const annotationValue = actionDiv.querySelector('.annotationValue');
-            updateAnnotationValues(actionDiv.querySelector('.annotationField'), annotationValue);
-            annotationValue.value = action.annotationValue || '';
+            if (annotationField) annotationField.value = action.annotationField || '';
+            if (annotationField && annotationValue) {
+                updateAnnotationValues(annotationField, annotationValue);
+                annotationValue.value = action.annotationValue || '';
+            }
             const disagreeCheckbox = actionDiv.querySelector('.annotationDisagree');
             if (disagreeCheckbox) disagreeCheckbox.checked = action.disagree || false;
             break;
@@ -973,9 +976,16 @@ function duplicateConfiguration(configId) {
     delete saveButton.dataset.editIndex;
 }
 
+let actionUidCounter = 0;
 function addActionToForm(action = null) {
     const actionDiv = document.createElement('div');
     actionDiv.className = 'action-item';
+    // Unique suffix per action so radio groups (follow/reviewed) and their label
+    // ids don't collide across multiple actions in the same config. Without this,
+    // all "reviewedToggle"/"followToggle" radios share one document-wide group and
+    // selecting one clears the others, leaving an action with nothing checked —
+    // which made the save crash on querySelector(':checked').value (issue #50).
+    const uid = 'act' + (actionUidCounter++);
     actionDiv.innerHTML = `
         <select class="actionType">
             <option value="addTaxonId">Add Taxon ID</option>
@@ -993,18 +1003,18 @@ function addActionToForm(action = null) {
         </select>
        <div class="follow-options" style="display: none;">
             <div class="inline-radio">
-                <input type="radio" id="follow" name="followToggle" value="follow" checked>
-                <label for="follow">Follow</label>
-                <input type="radio" id="unfollow" name="followToggle" value="unfollow">
-                <label for="unfollow">Unfollow</label>
+                <input type="radio" id="follow-${uid}" name="followToggle-${uid}" value="follow" checked>
+                <label for="follow-${uid}">Follow</label>
+                <input type="radio" id="unfollow-${uid}" name="followToggle-${uid}" value="unfollow">
+                <label for="unfollow-${uid}">Unfollow</label>
             </div>
         </div>
         <div class="reviewed-options" style="display: none;">
             <div class="inline-radio">
-                <input type="radio" id="markReviewed" name="reviewedToggle" value="mark" checked>
-                <label for="markReviewed">Mark as Reviewed</label>
-                <input type="radio" id="unmarkReviewed" name="reviewedToggle" value="unmark">
-                <label for="unmarkReviewed">Mark as Unreviewed</label>
+                <input type="radio" id="markReviewed-${uid}" name="reviewedToggle-${uid}" value="mark" checked>
+                <label for="markReviewed-${uid}">Mark as Reviewed</label>
+                <input type="radio" id="unmarkReviewed-${uid}" name="reviewedToggle-${uid}" value="unmark">
+                <label for="unmarkReviewed-${uid}">Mark as Unreviewed</label>
             </div>
         </div>
         <div class="ofInputs">

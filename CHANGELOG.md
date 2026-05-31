@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.3.2] - 2026-05-30
+
+### Fixed
+- Editing a configuration with multiple actions could blank out a "Mark as Reviewed/Unreviewed" (or "Follow/Unfollow") selection, and then "Update Configuration" failed with `Cannot read properties of null (reading 'value')`. The follow/reviewed radio buttons used hardcoded `name`/`id` attributes, so every action's radios shared one document-wide radio group and cleared each other. Each action now gets a unique radio-group name/id, and the save reads are null-guarded with a sensible default. (#50)
+- macOS: Alt(Option)-based keyboard shortcuts (e.g. Alt+N to rotate buttons) did nothing, because Option turns the keystroke into a special character so `event.key` was no longer the letter. Shortcuts now fall back to `event.code` (physical key) when Alt is held. (#49)
+- Mojibake on the options page: the expand/collapse arrows on existing configuration items (and a few other glyphs) rendered as `â–¼` because `options.html` had no `<meta charset>`, so the browser decoded `options.js` as Windows-1252 instead of UTF-8. Added `<meta charset="UTF-8">`.
+
+### Added
+- `browser_specific_settings.gecko_android` so the extension can be installed on Firefox for Android. (#47)
+
 ## [3.3.1] - 2026-05-28
 
 First post-launch user-reported fix: the Add to/Remove from Project action couldn't find some projects by name, and the Project ID field was visible but unusable.
