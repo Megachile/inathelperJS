@@ -923,7 +923,12 @@ function populateActionInputs(actionDiv, action) {
             actionDiv.querySelector('.commentBody').value = action.commentBody || '';
             break;
         case 'addTaxonId':
-            actionDiv.querySelector('.taxonName').value = action.taxonName || '';
+            const taxonNameEl = actionDiv.querySelector('.taxonName');
+            taxonNameEl.value = action.taxonName || '';
+            // extractFormData reads the id from dataset.taxonId on the name input
+            // (set by the autocomplete). Restore it here too, otherwise editing a
+            // button and hitting Update fails validation until the taxon is re-picked.
+            taxonNameEl.dataset.taxonId = action.taxonId || '';
             actionDiv.querySelector('.taxonId').value = action.taxonId || '';
             actionDiv.querySelector('.taxonComment').value = action.comment || '';
             if (actionDiv.querySelector('.disagreementCheckbox')) {
