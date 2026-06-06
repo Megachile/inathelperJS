@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.3.3] - 2026-06-06
+
+### Added
+- **iNaturalist Network multi-node support** (#51) — buttons and shortcuts now work on every iNaturalist Network site (iNaturalist Australia / `inaturalist.ala.org.au`, `mexico.inaturalist.org`, `naturalista.uy`, `argentinat.org`, `biodiversity4all.org`, and the rest), not just `www.inaturalist.org`. The Network shares one account system and one API (`api.inaturalist.org`) with a page-scraped JWT, so the changes were just injecting on each node's host and building user-facing links against whichever node you're on (`getINatSiteBase` / `getIdentifyPageUrl`). The content script records the current node so the URL builder defaults to it too, falling back to global iNaturalist.
+- **"All places" toggle in the URL builder** — Network sites apply a default regional place when no `place_id` is in the URL; the toggle adds `place_id=any` so a query stays global regardless of which node it opens on (ignored when you've added a specific Place filter).
+
+### Fixed
+- **Editing an "Add Taxon ID" button wiped the taxon** (#52) — opening a saved Add Taxon ID action and clicking "Update Configuration" failed validation ("Please select a valid taxon…") until the taxon was re-picked. `populateActionInputs` restored the visible name and the hidden id input but not `dataset.taxonId`, which is the only place `extractFormData` reads the id from (and, unlike the observation-field taxon case, it has no fallback). The id is now restored on load.
+- **URL builder Location Accuracy labels were dead clicks** (#53) — the label text pointed at non-existent element ids, so only the radio circles responded. The radios are now correctly labeled Any/True/False, and the "Accuracy Above/Below (m)" labels are attached to their number inputs.
+- **URL builder Geoprivacy filters couldn't be cleared** (#53) — Geoprivacy and Taxon Geoprivacy were radio groups with no "Any" option, so once a value was picked there was no way back to "no filter". Both now default to "Any" and the param is omitted when set to Any.
+
 ## [3.3.2] - 2026-05-30
 
 ### Fixed

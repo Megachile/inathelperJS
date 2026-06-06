@@ -126,10 +126,41 @@ const controlledTerms = {
 let currentJWT = null;
 const API_BASE = 'https://api.inaturalist.org';
 const API_URL = `${API_BASE}/v1`;
+const DEFAULT_INAT_SITE = 'https://www.inaturalist.org';
+
+// The iNaturalist Network spans many regional sites (inaturalist.ala.org.au,
+// mexico.inaturalist.org, etc.) that all share one account system and the one
+// API at api.inaturalist.org. The API base never changes; only user-facing
+// links should point at whichever node the user is actually on.
+//
+// In a content script we are ON a node page, so window.location.origin IS that
+// node. In extension pages (options/URLgen) there is no node context, so we use
+// the last node the content script recorded, falling back to global iNaturalist.
+let cachedINatSite = null;
+function isExtensionPage() {
+    return !(typeof window !== 'undefined' && window.location &&
+        (window.location.protocol === 'https:' || window.location.protocol === 'http:'));
+}
+function getINatSiteBase() {
+    if (!isExtensionPage()) return window.location.origin;
+    return cachedINatSite || DEFAULT_INAT_SITE;
+}
 // Standard identify-page query string used for "review these observations" deep links.
 // Includes all quality grades / review states / verifiability / places so the resulting
-// URL surfaces every observation in the supplied id list.
-const IDENTIFY_PAGE_URL = 'https://www.inaturalist.org/observations/identify?quality_grade=casual,needs_id,research&reviewed=any&verifiable=any&place_id=any';
+// URL surfaces every observation in the supplied id list. Built per-call so the link
+// targets the user's current/last iNaturalist Network node, not a hardcoded host.
+function getIdentifyPageUrl() {
+    return `${getINatSiteBase()}/observations/identify?quality_grade=casual,needs_id,research&reviewed=any&verifiable=any&place_id=any`;
+}
+
+// In extension pages, preload the last-visited node so links default to it.
+if (isExtensionPage() && typeof browserAPI !== 'undefined' && browserAPI.storage) {
+    try {
+        browserAPI.storage.local.get('lastINatSite', d => {
+            if (d && d.lastINatSite) cachedINatSite = d.lastINatSite;
+        });
+    } catch (e) { /* storage unavailable; fall back to DEFAULT_INAT_SITE */ }
+}
 
 function lookupTaxon(query, per_page = 10) {
     const baseUrl = `${API_URL}/taxa/autocomplete`;
@@ -382,7 +413,7 @@ function setupTaxonAutocomplete(inputElement, idElement) {
                             <img src="${escapeHtml(safeTaxonPhoto)}" alt="${escapeHtml(taxon.name)}">
                             <span class="taxon-name">
                                 ${taxon.preferred_common_name ? `${escapeHtml(taxon.preferred_common_name)} (` : ''}
-                                <a href="https://www.inaturalist.org/taxa/${safeTaxonId}" target="_blank" class="taxon-link">
+                                <a href="${getINatSiteBase()}/taxa/${safeTaxonId}" target="_blank" class="taxon-link">
                                     ${escapeHtml(taxon.name)}
                                 </a>
                                 ${taxon.preferred_common_name ? ')' : ''}
@@ -537,7 +568,7 @@ function setupObservationFieldAutocomplete(nameInput, idInput) {
 
 
 function generateObservationURL(observationIds) {
-    const baseURL = IDENTIFY_PAGE_URL;
+    const baseURL = getIdentifyPageUrl();
     return `${baseURL}&per_page=${observationIds.length}&id=${observationIds.join(',')}`;
 }
 
@@ -1332,7 +1363,7 @@ function showJWTAlert() {
         <h2 style="margin-top: 0;">Authentication Required</h2>
         <p>This extension submits actions to the iNaturalist server using your account credentials. Please ensure you are logged into iNaturalist and have recently visited an iNaturalist page. This allows the extension to securely connect to your iNaturalist account.</p>
         <p>After you navigate to an Identify page logged in to your account, refresh this page. If your credentials were obtained, this note should not appear.</p>
-        <a href="https://www.inaturalist.org/observations/identify" target="_blank" style="color: blue; text-decoration: underline;">Open iNaturalist Identify Page</a>
+        <a href="${getINatSiteBase()}/observations/identify" target="_blank" style="color: blue; text-decoration: underline;">Open iNaturalist Identify Page</a>
         <button id="closeJWTAlert" style="display: block; margin: 20px auto 0; padding: 10px 20px;">Close</button>
     `;
 
@@ -1403,7 +1434,7 @@ function generateListObservationURL(listId) {
             const customLists = data.customLists || [];
             const list = customLists.find(l => l.id === listId);
             if (list && list.observations.length > 0) {
-                const baseURL = IDENTIFY_PAGE_URL;
+                const baseURL = getIdentifyPageUrl();
                 const url = `${baseURL}&per_page=${list.observations.length}&id=${list.observations.join(',')}`;
                 resolve(url);
             } else {
@@ -1966,7 +1997,7 @@ function createProjectActionResultsModal(summary, projectName, wasRemoval = fals
                 <ul>
                     ${purelySkippedObsDetails.map(skipped => `
                         <li>
-                            <a href="https://www.inaturalist.org/observations/${encodeURIComponent(skipped.observationId)}"
+                            <a href="${getINatSiteBase()}/observations/${encodeURIComponent(skipped.observationId)}"
                                target="_blank" style="color: #0077cc; text-decoration: underline;">
                                 Observation ${escapeHtml(skipped.observationId)}
                             </a>: ${escapeHtml(skipped.message || 'No action needed')} (${escapeHtml(skipped.reason || 'Skipped')})
@@ -1987,7 +2018,7 @@ function createProjectActionResultsModal(summary, projectName, wasRemoval = fals
                 <ul>
                     ${summary.warnings.map(warning => `
                         <li>
-                            <a href="https://www.inaturalist.org/observations/${encodeURIComponent(warning.observationId)}"
+                            <a href="${getINatSiteBase()}/observations/${encodeURIComponent(warning.observationId)}"
                                target="_blank" style="color: #0077cc; text-decoration: underline;">
                                 Observation ${escapeHtml(warning.observationId)}
                             </a>: ${escapeHtml(warning.message)}
@@ -2013,14 +2044,14 @@ function createProjectActionResultsModal(summary, projectName, wasRemoval = fals
             <div style="margin: 15px 0; padding: 10px; background: #ffeded; border-radius: 4px;">
                 <h3>Project Action Failed (${failuresToList.length} observations)</h3>
                  <p>The project addition/removal action failed for these observations:</p>
-                <p><a href="${IDENTIFY_PAGE_URL}&id=${failuresToList.map(f => encodeURIComponent(f.observationId)).join(',')}"
+                <p><a href="${getIdentifyPageUrl()}&id=${failuresToList.map(f => encodeURIComponent(f.observationId)).join(',')}"
                       target="_blank" style="color: #0077cc; text-decoration: underline;">
                     View these observations
                 </a></p>
                 <ul>
                     ${failuresToList.map(failure => `
                         <li>
-                            <a href="https://www.inaturalist.org/observations/${encodeURIComponent(failure.observationId)}"
+                            <a href="${getINatSiteBase()}/observations/${encodeURIComponent(failure.observationId)}"
                                target="_blank" style="color: #0077cc; text-decoration: underline;">
                                 Observation ${escapeHtml(failure.observationId)}
                             </a>:
@@ -2177,7 +2208,7 @@ function createDetailedActionResultsModal(summaryByActionType, actionSetName, sk
             <div style="margin: 15px 0; padding: 10px; background: #fff8e1; border: 1px solid #ffecb3; border-radius: 4px;">
                 <h4>Skipped by Safe Mode (<a href="${generateObservationURL(uniqueSkippedIds)}" target="_blank" style="color: #4caf50; text-decoration: underline;">${uniqueSkippedIds.length} ${pluralize(uniqueSkippedIds.length, "observation")}</a>)</h4>
                 <p>These observations were skipped entirely because at least one 'Observation Field' action would have overwritten an existing value, and Safe Mode is ON.</p>
-                ${uniqueSkippedIds.length <= 15 && uniqueSkippedIds.length > 0 ? `<ul>${uniqueSkippedIds.map(id => `<li><a href="https://www.inaturalist.org/observations/${encodeURIComponent(id)}" target="_blank">${escapeHtml(id)}</a></li>`).join('')}</ul>` : ''}
+                ${uniqueSkippedIds.length <= 15 && uniqueSkippedIds.length > 0 ? `<ul>${uniqueSkippedIds.map(id => `<li><a href="${getINatSiteBase()}/observations/${encodeURIComponent(id)}" target="_blank">${escapeHtml(id)}</a></li>`).join('')}</ul>` : ''}
             </div>`;
     }
     
@@ -2189,7 +2220,7 @@ function createDetailedActionResultsModal(summaryByActionType, actionSetName, sk
                 <p>The following observation field values were overwritten (Overwrite Mode was ON):</p>
                 <div style="max-height: 150px; overflow-y: auto;"><ul>`;
         for (const [obsId, fields] of Object.entries(overwrittenValues)) {
-            contentHTML += `<li><a href="https://www.inaturalist.org/observations/${encodeURIComponent(obsId)}" target="_blank">${escapeHtml(obsId)}</a>:<ul>`;
+            contentHTML += `<li><a href="${getINatSiteBase()}/observations/${encodeURIComponent(obsId)}" target="_blank">${escapeHtml(obsId)}</a>:<ul>`;
             for (const [fieldName, change] of Object.entries(fields)) {
                 contentHTML += `<li>"${escapeHtml(fieldName)}": from "${escapeHtml(change.oldValue)}" to "${escapeHtml(change.newValue)}"</li>`;
             }
@@ -2248,7 +2279,7 @@ function createDetailedActionResultsModal(summaryByActionType, actionSetName, sk
                 contentHTML += `<p style="color: red;">Failed for <a href="${generateObservationURL(uniqueFailedIds)}" target="_blank" style="color: red; text-decoration: underline;">${uniqueFailedIds.length} ${pluralize(uniqueFailedIds.length, "observation")}</a>:</p>`;
                 contentHTML += `<div style="max-height: 150px; overflow-y: auto;"><ul>`;
                 actualFailures.forEach(f => {
-                    contentHTML += `<li><a href="https://www.inaturalist.org/observations/${encodeURIComponent(f.observationId)}" target="_blank">${escapeHtml(f.observationId)}</a>: ${escapeHtml(getCleanErrorMessage(f.message || f.error))} ${f.reason && f.reason !== 'safe_mode_skip' ? `(${escapeHtml(f.reason)})` : ''}</li>`;
+                    contentHTML += `<li><a href="${getINatSiteBase()}/observations/${encodeURIComponent(f.observationId)}" target="_blank">${escapeHtml(f.observationId)}</a>: ${escapeHtml(getCleanErrorMessage(f.message || f.error))} ${f.reason && f.reason !== 'safe_mode_skip' ? `(${escapeHtml(f.reason)})` : ''}</li>`;
                 });
                 contentHTML += `</ul></div>`;
             }
@@ -2262,7 +2293,7 @@ function createDetailedActionResultsModal(summaryByActionType, actionSetName, sk
                 const displayedSkippedReasons = new Map();
                 skipped.forEach(s => {
                     if (!displayedSkippedReasons.has(s.observationId)) {
-                        contentHTML += `<li><a href="https://www.inaturalist.org/observations/${encodeURIComponent(s.observationId)}" target="_blank">${escapeHtml(s.observationId)}</a>: ${escapeHtml(s.message || 'No specific message')} ${s.reason ? `(${escapeHtml(s.reason)})` : ''}</li>`;
+                        contentHTML += `<li><a href="${getINatSiteBase()}/observations/${encodeURIComponent(s.observationId)}" target="_blank">${escapeHtml(s.observationId)}</a>: ${escapeHtml(s.message || 'No specific message')} ${s.reason ? `(${escapeHtml(s.reason)})` : ''}</li>`;
                         displayedSkippedReasons.set(s.observationId, true);
                     }
                 });
@@ -2278,7 +2309,7 @@ function createDetailedActionResultsModal(summaryByActionType, actionSetName, sk
                 const displayedWarningReasons = new Map();
                 warnings.forEach(w => {
                      if (!displayedWarningReasons.has(w.observationId)) {
-                        contentHTML += `<li><a href="https://www.inaturalist.org/observations/${encodeURIComponent(w.observationId)}" target="_blank">${escapeHtml(w.observationId)}</a>: ${escapeHtml(w.message || 'No specific message')} ${w.reason ? `(${escapeHtml(w.reason)})` : ''}</li>`;
+                        contentHTML += `<li><a href="${getINatSiteBase()}/observations/${encodeURIComponent(w.observationId)}" target="_blank">${escapeHtml(w.observationId)}</a>: ${escapeHtml(w.message || 'No specific message')} ${w.reason ? `(${escapeHtml(w.reason)})` : ''}</li>`;
                         displayedWarningReasons.set(w.observationId, true);
                      }
                 });

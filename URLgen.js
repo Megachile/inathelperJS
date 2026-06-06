@@ -190,13 +190,13 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('exploreButton').addEventListener('click', async function(e) {
         e.preventDefault();
         const queryString = await generateURL();
-        window.open('https://www.inaturalist.org/observations?' + queryString, '_blank');
+        window.open(getINatSiteBase() + '/observations?' + queryString, '_blank');
     });
     
     document.getElementById('identifyButton').addEventListener('click', async function(e) {
         e.preventDefault();
         const queryString = await generateURL();
-        window.open('https://www.inaturalist.org/observations/identify?' + queryString, '_blank');
+        window.open(getINatSiteBase() + '/observations/identify?' + queryString, '_blank');
     });
 
     const actionsContainer = document.getElementById('actionsContainer');
@@ -618,7 +618,7 @@ function processInputs(type) {
 
 async function generateURL() {
     debugLog('Generating URL...');
-    let url = 'https://www.inaturalist.org/observations/identify?';
+    let url = getINatSiteBase() + '/observations/identify?';
     let params = [];
 
     // Get selected observations first
@@ -912,15 +912,27 @@ async function generateURL() {
 
   // Add geoprivacy parameters
   const geoprivacy = document.querySelector('input[name="geoprivacy"]:checked');
-  if (geoprivacy) {
+  if (geoprivacy && geoprivacy.value !== 'any') {
     params.push(`geoprivacy=${geoprivacy.value}`);
   }
 
   const taxonGeoprivacy = document.querySelector('input[name="taxonGeoprivacy"]:checked');
-  if (taxonGeoprivacy) {
+  if (taxonGeoprivacy && taxonGeoprivacy.value !== 'any') {
     params.push(`taxon_geoprivacy=${taxonGeoprivacy.value}`);
   }
     
+  // "All places" override: iNaturalist Network nodes (inaturalist.ala.org.au,
+  // mexico.inaturalist.org, ...) apply a default site place when no place_id is
+  // present in the URL, silently scoping results to the node's region. If the
+  // user ticked "show all places" and hasn't added a specific place filter,
+  // force place_id=any so the query stays global regardless of which node it
+  // opens on.
+  const allPlacesToggle = document.getElementById('allPlacesToggle');
+  const hasPlaceFilter = params.some(p => p.startsWith('place_id='));
+  if (allPlacesToggle && allPlacesToggle.checked && !hasPlaceFilter) {
+      params.push('place_id=any');
+  }
+
   const rawUrl = url + params.join('&');
   debugLog('Raw generated URL:', rawUrl);
 
@@ -935,8 +947,8 @@ async function generateURL() {
     const exploreButton = document.getElementById('exploreButton');
     const identifyButton = document.getElementById('identifyButton');
     
-    exploreButton.href = 'https://www.inaturalist.org/observations?' + queryString;
-    identifyButton.href = 'https://www.inaturalist.org/observations/identify?' + queryString;
+    exploreButton.href = getINatSiteBase() + '/observations?' + queryString;
+    identifyButton.href = getINatSiteBase() + '/observations/identify?' + queryString;
 
     // Show the URL outputs
     document.getElementById('urlOutputs').style.display = 'block';

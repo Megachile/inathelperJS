@@ -9,6 +9,11 @@ function safeErrorString(error) {
     return 'Unknown error';
 }
 
+// Remember which iNaturalist Network node this page is on so extension pages
+// (options / URLgen) can build user-facing links against the user's own node
+// instead of always defaulting to global iNaturalist.
+try { browserAPI.storage.local.set({ lastINatSite: window.location.origin }); } catch (e) {}
+
 browserAPI.storage.local.get(['highlightColor', 'buttonMinWidth', 'verticalButtonLayout', 'buttonContainerMaxWidth'], function(data) {
     const color = data.highlightColor || '#FF6600';
     document.documentElement.style.setProperty('--highlight-color', color);
@@ -3269,8 +3274,10 @@ function parseCSVObservations(csvText) {
         for (const part of parts) {
             const cleaned = part.trim().replace(/['"]/g, '');
 
-            // Extract ID from full URL like https://www.inaturalist.org/observations/208103778
-            const urlMatch = cleaned.match(/inaturalist\.org\/observations\/(\d+)/);
+            // Extract ID from a full observation URL on any iNaturalist Network node
+            // (inaturalist.org, inaturalist.ala.org.au, naturalista.uy, argentinat.org,
+            // biodiversity4all.org, ...) or accept a bare numeric id below.
+            const urlMatch = cleaned.match(/(?:inaturalist|naturalista|argentinat|biodiversity4all)[\w.\-]*\/observations\/(\d+)/i);
             if (urlMatch) {
                 ids.push(urlMatch[1]);
             }
@@ -3289,7 +3296,7 @@ function parseCSVObservations(csvText) {
     // Remove duplicates
     const uniqueIds = [...new Set(ids)];
 
-    const identifyUrl = `${IDENTIFY_PAGE_URL}&per_page=${uniqueIds.length}&id=${uniqueIds.join(',')}`;
+    const identifyUrl = `${getIdentifyPageUrl()}&per_page=${uniqueIds.length}&id=${uniqueIds.join(',')}`;
 
     window.location.href = identifyUrl;
 }
@@ -4477,7 +4484,7 @@ function createActionResultsModal(results, skippedCount, skippedURL, overwritten
         Object.entries(overwrittenDetails).forEach(([observationId, fields]) => { // Changed from 'details' to 'fields'
             contentHTML += `
                 <li>
-                    <a href="https://www.inaturalist.org/observations/${encodeURIComponent(observationId)}"
+                    <a href="${getINatSiteBase()}/observations/${encodeURIComponent(observationId)}"
                        target="_blank"
                        style="color: #0077cc; text-decoration: underline;">
                         Observation ${escapeHtml(observationId)}
@@ -4512,7 +4519,7 @@ function createActionResultsModal(results, skippedCount, skippedURL, overwritten
                 <h4>Failed Actions (${actualFailures.length})</h4>
                 <div style="max-height: 150px; overflow-y: auto;"><ul>`;
         actualFailures.forEach(f => {
-             contentHTML += `<li>Obs. <a href="https://www.inaturalist.org/observations/${encodeURIComponent(f.observationId)}" target="_blank">${escapeHtml(f.observationId)}</a> (Action: ${escapeHtml(f.action || 'Unknown')}): ${escapeHtml(getCleanErrorMessage(f.message || f.error))} ${f.reason ? `(${escapeHtml(f.reason)})` : ''}</li>`;
+             contentHTML += `<li>Obs. <a href="${getINatSiteBase()}/observations/${encodeURIComponent(f.observationId)}" target="_blank">${escapeHtml(f.observationId)}</a> (Action: ${escapeHtml(f.action || 'Unknown')}): ${escapeHtml(getCleanErrorMessage(f.message || f.error))} ${f.reason ? `(${escapeHtml(f.reason)})` : ''}</li>`;
         });
         contentHTML += `</ul></div></div>`;
     }
@@ -6437,7 +6444,7 @@ async function createValidationModal(validationResults, selectedAction, onConfir
                     const item = document.createElement('div');
                     item.style.marginBottom = '10px';
                     item.innerHTML = `
-                        <a href="https://www.inaturalist.org/observations/${encodeURIComponent(observationId)}"
+                        <a href="${getINatSiteBase()}/observations/${encodeURIComponent(observationId)}"
                            target="_blank"
                            style="color: #0077cc;">
                             Observation ${escapeHtml(observationId)}
@@ -6499,7 +6506,7 @@ async function createValidationModal(validationResults, selectedAction, onConfir
                 const item = document.createElement('div');
                 item.style.marginBottom = '10px';
                 item.innerHTML = `
-                    <a href="https://www.inaturalist.org/observations/${encodeURIComponent(observationId)}"
+                    <a href="${getINatSiteBase()}/observations/${encodeURIComponent(observationId)}"
                        target="_blank"
                        style="color: #0077cc;">
                         Observation ${escapeHtml(observationId)}

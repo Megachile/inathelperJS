@@ -450,20 +450,24 @@
           </div>
           </div>
             <div class="toggle-group">
-              <label for="acc" data-tooltip="Filter observations based on whether they have location accuracy data">Location Accuracy</label>
+              <label data-tooltip="Filter observations based on whether they have location accuracy data">Location Accuracy</label>
               <input type="radio" name="accType" id="accAny" value="any" checked>
-              <label for="acc_above" data-tooltip="Show observations with location accuracy above this value in meters">Accuracy Above</label>
+              <label for="accAny">Any</label>
               <input type="radio" name="accType" id="accTrue" value="true">
-              <label for="acc_below" data-tooltip="Show observations with location accuracy below this value in meters">Accuracy Below</label>
+              <label for="accTrue" data-tooltip="Only observations that have location accuracy data (lets you bound it below)">True</label>
               <input type="radio" name="accType" id="accFalse" value="false">
-              <label for="accFalse">False</label>
+              <label for="accFalse" data-tooltip="Only observations with no location accuracy data">False</label>
             </div>
             <div id="accInputs" style="display: none;">
+              <label for="accAbove" data-tooltip="Show observations with location accuracy above this value in meters">Accuracy Above</label>
               <input type="number" id="accAbove" placeholder="Accuracy Above (m)">
+              <label for="accBelow" data-tooltip="Show observations with location accuracy below this value in meters">Accuracy Below</label>
               <input type="number" id="accBelow" placeholder="Accuracy Below (m)">
             </div>
             <div class="toggle-group">
               <label for="geoprivacy" data-tooltip="Filter by observer-set location privacy">Geoprivacy</label>
+              <input type="radio" name="geoprivacy" id="geoAny" value="any" checked>
+              <label for="geoAny">Any</label>
               <input type="radio" name="geoprivacy" id="geoOpen" value="open">
               <label for="geoOpen">Open</label>
               <input type="radio" name="geoprivacy" id="geoObscured" value="obscured">
@@ -475,6 +479,8 @@
             </div>
             <div class="toggle-group">
               <label for="taxon_geoprivacy" data-tooltip="Filter by automatically applied location privacy for sensitive species">Taxon Geoprivacy</label>
+              <input type="radio" name="taxonGeoprivacy" id="taxonGeoAny" value="any" checked>
+              <label for="taxonGeoAny">Any</label>
               <input type="radio" name="taxonGeoprivacy" id="taxonGeoOpen" value="open">
               <label for="taxonGeoOpen">Open</label>
               <input type="radio" name="taxonGeoprivacy" id="taxonGeoObscured" value="obscured">
@@ -584,6 +590,7 @@
           <button id="addAnnotationButton" data-tooltip="Filter for observations with specific annotations">Add Annotation</button>
       </div>
       <label data-tooltip="If multiple ID Taxon criteria are added, match only observations with at least one identification for each specified taxon (includes descendants)"><input type="checkbox" id="idTaxonExclusive"> ID Taxa Exclusive</label>
+      <label data-tooltip="iNaturalist Network sites (e.g. inaturalist.ala.org.au) default to their own region when no place is set. Tick this to add place_id=any so results stay global. Ignored if you add a specific Place filter."><input type="checkbox" id="allPlacesToggle"> All places (override site default)</label>
       <div id="actionsContainer">
       </div>
             

@@ -1,12 +1,25 @@
 {
   "manifest_version": 3,
   "name": "iNaturalist Metadata Tool",
-  "version": "3.3.2",
+  "version": "3.3.3",
   "description": "Configurable buttons and shortcuts for iNaturalist: bulk annotations, tags, fields, projects, and a URL filter builder.",
   "author": "Adam Kranz",
   "homepage_url": "https://github.com/Megachile/inathelperJS",
   "permissions": ["identity","activeTab", "storage", "webRequest","tabs"],
-  "host_permissions": ["https://api.inaturalist.org/*", "https://www.inaturalist.org/*"],
+  "host_permissions": [
+    "https://api.inaturalist.org/*",
+    "https://*.inaturalist.org/*",
+    "https://inaturalist.ala.org.au/*",
+    "https://*.inaturalist.nz/*",
+    "https://*.inaturalist.ca/*",
+    "https://*.inaturalist.se/*",
+    "https://*.inaturalist.lu/*",
+    "https://*.argentinat.org/*",
+    "https://*.biodiversity4all.org/*",
+    "https://inaturalist.mma.gob.cl/*",
+    "https://inaturalist.laji.fi/*",
+    "https://*.naturalista.uy/*"
+  ],
   "action": {
       "default_icon": {
       "16": "images/icon16.png",
@@ -21,11 +34,20 @@
   "content_scripts": [
     {
       "matches": [
-        "https://www.inaturalist.org/observations/identify*",
-        "https://www.inaturalist.org/observations/*"
+        "https://*.inaturalist.org/observations/*",
+        "https://inaturalist.ala.org.au/observations/*",
+        "https://*.inaturalist.nz/observations/*",
+        "https://*.inaturalist.ca/observations/*",
+        "https://*.inaturalist.se/observations/*",
+        "https://*.inaturalist.lu/observations/*",
+        "https://*.argentinat.org/observations/*",
+        "https://*.biodiversity4all.org/observations/*",
+        "https://inaturalist.mma.gob.cl/observations/*",
+        "https://inaturalist.laji.fi/observations/*",
+        "https://*.naturalista.uy/observations/*"
   ],
   "exclude_matches": [
-      "https://www.inaturalist.org/observations/upload*"
+      "https://*/observations/upload*"
     ],
       "js": ["shared_api.js","content.js"],
       "run_at": "document_end"
