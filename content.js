@@ -174,7 +174,8 @@ function createShortcutList() {
     list.innerHTML = `
         <li>Shift + B: Toggle button visibility</li>
         <li>Shift + V: Toggle bulk action box</li>
-        <li>Alt + N: Cycle button position</li>
+        <li>Alt + N: Cycle button position (resets free move/resize)</li>
+        <li>Drag the ☰ handle to move buttons freely; drag the corner grip to resize</li>
         <li>Ctrl + Shift + R: Toggle refresh</li>
         <li>Alt + H: Toggle this shortcut list</li>
         <li>Alt + S: Cycle through button sets</li>
@@ -380,6 +381,8 @@ function toggleButtonVisibility() {
 }
 
 function cycleButtonPosition() {
+    // Alt+N doubles as the "snap back to a corner" reset for free drag/resize.
+    if (typeof resetFreeButtonLayout === 'function') resetFreeButtonLayout();
     currentPositionIndex = (currentPositionIndex + 1) % positions.length;
     buttonPosition = positions[currentPositionIndex];
     updatePositions();
@@ -451,6 +454,10 @@ function updatePositions() {
                 idDisplay.style.left = '10px';
             }
             break;
+    }
+    // A saved free position overrides the corner preset (e.g. after a re-render).
+    if (typeof freeButtonPosition !== 'undefined' && freeButtonPosition) {
+        applyFreeButtonPosition();
     }
     updateBulkButtonPosition();
 }
@@ -668,6 +675,142 @@ buttonContainer.id = 'custom-extension-container';
 
 buttonDiv.appendChild(buttonContainer);
 document.body.appendChild(buttonDiv);
+
+// --- Free positioning & resizing (issue #54) ---------------------------------
+// Beyond the four corner presets (Alt+N), the whole button cluster can be
+// dragged anywhere via a grip handle and resized via a corner grip. The chosen
+// position/size persist to storage.local and take precedence over the corner
+// preset. Alt+N clears them again, acting as a "snap back to a corner" reset.
+let freeButtonPosition = null; // {left, top} in px, or null
+let freeButtonSize = null;     // {width, height} in px, or null
+
+// Drag handle (slim grip bar at the top of the cluster).
+const dragHandle = document.createElement('div');
+dragHandle.id = 'button-drag-handle';
+dragHandle.title = 'Drag to move buttons — Alt+N snaps back to a corner';
+dragHandle.textContent = '☰'; // trigram / grip glyph
+buttonDiv.insertBefore(dragHandle, buttonContainer);
+
+// Resize grip (corner handle on the button container). A custom grip is used
+// instead of CSS `resize` so the container can keep `overflow: visible` and not
+// clip button tooltips.
+const resizeGrip = document.createElement('div');
+resizeGrip.id = 'button-resize-grip';
+resizeGrip.title = 'Drag to resize the button area';
+buttonDiv.appendChild(resizeGrip);
+
+function clampButtonToViewport(left, top, width, height) {
+    const maxLeft = Math.max(0, window.innerWidth - width);
+    const maxTop = Math.max(0, window.innerHeight - height);
+    return {
+        left: Math.max(0, Math.min(left, maxLeft)),
+        top: Math.max(0, Math.min(top, maxTop))
+    };
+}
+
+function applyFreeButtonPosition() {
+    if (!freeButtonPosition) return;
+    const rect = buttonDiv.getBoundingClientRect();
+    const pos = clampButtonToViewport(freeButtonPosition.left, freeButtonPosition.top, rect.width, rect.height);
+    buttonDiv.style.top = pos.top + 'px';
+    buttonDiv.style.left = pos.left + 'px';
+    buttonDiv.style.right = 'auto';
+    buttonDiv.style.bottom = 'auto';
+}
+
+function applyFreeButtonSize() {
+    if (!freeButtonSize) return;
+    buttonContainer.style.maxWidth = 'none';
+    buttonContainer.style.width = freeButtonSize.width + 'px';
+    buttonContainer.style.height = freeButtonSize.height + 'px';
+}
+
+function resetFreeButtonLayout() {
+    freeButtonPosition = null;
+    freeButtonSize = null;
+    buttonContainer.style.maxWidth = '';
+    buttonContainer.style.width = '';
+    buttonContainer.style.height = '';
+    browserAPI.storage.local.remove(['buttonFreePosition', 'buttonFreeSize']);
+}
+
+// Drag-to-move
+let isButtonDragging = false, clusterDragOffsetX = 0, clusterDragOffsetY = 0;
+function onButtonDragMove(e) {
+    if (!isButtonDragging) return;
+    const rect = buttonDiv.getBoundingClientRect();
+    const pos = clampButtonToViewport(e.clientX - clusterDragOffsetX, e.clientY - clusterDragOffsetY, rect.width, rect.height);
+    buttonDiv.style.top = pos.top + 'px';
+    buttonDiv.style.left = pos.left + 'px';
+    buttonDiv.style.right = 'auto';
+    buttonDiv.style.bottom = 'auto';
+}
+function onButtonDragEnd() {
+    if (!isButtonDragging) return;
+    isButtonDragging = false;
+    document.removeEventListener('mousemove', onButtonDragMove);
+    document.removeEventListener('mouseup', onButtonDragEnd);
+    const rect = buttonDiv.getBoundingClientRect();
+    freeButtonPosition = { left: rect.left, top: rect.top };
+    browserAPI.storage.local.set({ buttonFreePosition: freeButtonPosition });
+}
+dragHandle.addEventListener('mousedown', function(e) {
+    isButtonDragging = true;
+    const rect = buttonDiv.getBoundingClientRect();
+    clusterDragOffsetX = e.clientX - rect.left;
+    clusterDragOffsetY = e.clientY - rect.top;
+    e.preventDefault();
+    document.addEventListener('mousemove', onButtonDragMove);
+    document.addEventListener('mouseup', onButtonDragEnd);
+});
+
+// Drag-to-resize
+let isButtonResizing = false, resizeStartX = 0, resizeStartY = 0, resizeStartW = 0, resizeStartH = 0;
+function onButtonResizeMove(e) {
+    if (!isButtonResizing) return;
+    const w = Math.max(80, resizeStartW + (e.clientX - resizeStartX));
+    const h = Math.max(28, resizeStartH + (e.clientY - resizeStartY));
+    buttonContainer.style.width = w + 'px';
+    buttonContainer.style.height = h + 'px';
+}
+function onButtonResizeEnd() {
+    if (!isButtonResizing) return;
+    isButtonResizing = false;
+    document.removeEventListener('mousemove', onButtonResizeMove);
+    document.removeEventListener('mouseup', onButtonResizeEnd);
+    freeButtonSize = { width: buttonContainer.offsetWidth, height: buttonContainer.offsetHeight };
+    browserAPI.storage.local.set({ buttonFreeSize: freeButtonSize });
+}
+resizeGrip.addEventListener('mousedown', function(e) {
+    isButtonResizing = true;
+    resizeStartX = e.clientX;
+    resizeStartY = e.clientY;
+    resizeStartW = buttonContainer.offsetWidth;
+    resizeStartH = buttonContainer.offsetHeight;
+    buttonContainer.style.maxWidth = 'none';
+    e.preventDefault();
+    e.stopPropagation();
+    document.addEventListener('mousemove', onButtonResizeMove);
+    document.addEventListener('mouseup', onButtonResizeEnd);
+});
+
+// Keep the cluster on-screen if the viewport shrinks.
+window.addEventListener('resize', function() {
+    if (freeButtonPosition) applyFreeButtonPosition();
+});
+
+// Restore any saved free layout.
+browserAPI.storage.local.get(['buttonFreePosition', 'buttonFreeSize'], function(data) {
+    if (data.buttonFreeSize) {
+        freeButtonSize = data.buttonFreeSize;
+        applyFreeButtonSize();
+    }
+    if (data.buttonFreePosition) {
+        freeButtonPosition = data.buttonFreePosition;
+        applyFreeButtonPosition();
+    }
+});
+// -----------------------------------------------------------------------------
 
 
 
@@ -1424,6 +1567,29 @@ style.textContent += `
       gap: 5px;
       max-width: var(--button-container-max-width, 600px);
   }
+  #button-drag-handle {
+      cursor: move;
+      font-size: 13px;
+      line-height: 1;
+      color: #888;
+      text-align: center;
+      padding: 2px 4px;
+      user-select: none;
+      opacity: 0.55;
+  }
+  #button-drag-handle:hover { opacity: 1; }
+  #button-resize-grip {
+      position: absolute;
+      right: 0;
+      bottom: 0;
+      width: 14px;
+      height: 14px;
+      cursor: nwse-resize;
+      opacity: 0.55;
+      z-index: 10003;
+      background: linear-gradient(135deg, transparent 0 45%, #888 45% 55%, transparent 55% 70%, #888 70% 80%, transparent 80%);
+  }
+  #button-resize-grip:hover { opacity: 1; }
     #custom-extension-container.dragging {
     height: var(--original-height);
     width: var(--original-width);
