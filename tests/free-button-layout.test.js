@@ -79,4 +79,24 @@ describe('Free button positioning & resizing (issue #54)', () => {
     test('updatePositions re-applies a saved free position over the corner preset', () => {
         expect(contentSource).toMatch(/if \(typeof freeButtonPosition !== 'undefined' && freeButtonPosition\) \{\s*applyFreeButtonPosition\(\);/);
     });
+
+    test('the wrapper has an id to anchor hover-reveal CSS', () => {
+        expect(contentSource).toMatch(/buttonDiv\.id = 'custom-extension-wrapper'/);
+    });
+
+    test('utility controls are hidden by default and revealed on hover (#54 polish)', () => {
+        // The sort/edit/set controls take up permanent space for rarely-used
+        // actions, so they fade in only when the cluster is hovered.
+        expect(contentSource).toMatch(/#sort-buttons-container \{[\s\S]*?opacity: 0;[\s\S]*?pointer-events: none;[\s\S]*?\}/);
+        expect(contentSource).toMatch(/#custom-extension-wrapper:hover #sort-buttons-container \{[\s\S]*?opacity: 1;[\s\S]*?pointer-events: auto;/);
+    });
+
+    test('resize grip is offset off the corner and also hover-revealed', () => {
+        expect(contentSource).toMatch(/#button-resize-grip \{[\s\S]*?right: -7px;[\s\S]*?bottom: -7px;/);
+        expect(contentSource).toMatch(/#custom-extension-wrapper:hover #button-resize-grip \{[\s\S]*?opacity: 0\.55;[\s\S]*?pointer-events: auto;/);
+    });
+
+    test('overhang measurement includes the resize grip so the offset cannot clip off-screen', () => {
+        expect(contentSource).toMatch(/const overhangers = \[document\.getElementById\('sort-buttons-container'\), resizeGrip\]/);
+    });
 });

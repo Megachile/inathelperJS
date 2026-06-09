@@ -176,6 +176,7 @@ function createShortcutList() {
         <li>Shift + V: Toggle bulk action box</li>
         <li>Alt + N: Cycle button position (resets free move/resize)</li>
         <li>Drag the ☰ handle to move buttons freely; drag the corner grip to resize</li>
+        <li>Sort / Edit / Set-picker controls appear when you hover the buttons</li>
         <li>Ctrl + Shift + R: Toggle refresh</li>
         <li>Alt + H: Toggle this shortcut list</li>
         <li>Alt + S: Cycle through button sets</li>
@@ -668,6 +669,7 @@ function animateButton(button) {
 
 // Create buttons and add them to the page
 let buttonDiv = document.createElement('div');
+buttonDiv.id = 'custom-extension-wrapper';
 buttonDiv.style.position = 'fixed';
 buttonDiv.style.zIndex = '10000';
 
@@ -707,14 +709,16 @@ buttonDiv.appendChild(resizeGrip);
 function getClusterOverhang() {
     const divRect = buttonDiv.getBoundingClientRect();
     let left = divRect.left, top = divRect.top, right = divRect.right, bottom = divRect.bottom;
-    const sortC = document.getElementById('sort-buttons-container');
-    if (sortC && sortC.offsetParent !== null) {
-        const r = sortC.getBoundingClientRect();
-        left = Math.min(left, r.left);
-        top = Math.min(top, r.top);
-        right = Math.max(right, r.right);
-        bottom = Math.max(bottom, r.bottom);
-    }
+    const overhangers = [document.getElementById('sort-buttons-container'), resizeGrip];
+    overhangers.forEach(el => {
+        if (el && el.offsetParent !== null) {
+            const r = el.getBoundingClientRect();
+            left = Math.min(left, r.left);
+            top = Math.min(top, r.top);
+            right = Math.max(right, r.right);
+            bottom = Math.max(bottom, r.bottom);
+        }
+    });
     return {
         overLeft: divRect.left - left,   // how far the cluster sticks out to the left of buttonDiv
         overTop: divRect.top - top,      // ...above buttonDiv
@@ -1624,16 +1628,22 @@ style.textContent += `
   #button-drag-handle:hover { opacity: 1; }
   #button-resize-grip {
       position: absolute;
-      right: 0;
-      bottom: 0;
-      width: 14px;
-      height: 14px;
+      right: -7px;
+      bottom: -7px;
+      width: 16px;
+      height: 16px;
       cursor: nwse-resize;
-      opacity: 0.55;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.15s ease;
       z-index: 10003;
       background: linear-gradient(135deg, transparent 0 45%, #888 45% 55%, transparent 55% 70%, #888 70% 80%, transparent 80%);
   }
-  #button-resize-grip:hover { opacity: 1; }
+  #custom-extension-wrapper:hover #button-resize-grip {
+      opacity: 0.55;
+      pointer-events: auto;
+  }
+  #button-resize-grip:hover { opacity: 1 !important; }
     #custom-extension-container.dragging {
     height: var(--original-height);
     width: var(--original-width);
@@ -1744,6 +1754,14 @@ style.textContent += `
         top: -30px;
         right: 0;
         z-index: 10002;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.15s ease;
+    }
+    /* Reveal the rarely-used sort/edit/set controls only on hover (issue #54). */
+    #custom-extension-wrapper:hover #sort-buttons-container {
+        opacity: 1;
+        pointer-events: auto;
     }
     #sort-button {
         background-color: rgba(0, 0, 0, 0.1);
