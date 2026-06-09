@@ -455,7 +455,8 @@ function updatePositions() {
             }
             break;
     }
-    // A saved free position overrides the corner preset (e.g. after a re-render).
+    // A saved free position overrides the corner preset (e.g. after a re-render),
+    // including re-snapping the sort/edit/set controls to the nearest side/edge.
     if (typeof freeButtonPosition !== 'undefined' && freeButtonPosition) {
         applyFreeButtonPosition();
     }
@@ -699,23 +700,66 @@ resizeGrip.id = 'button-resize-grip';
 resizeGrip.title = 'Drag to resize the button area';
 buttonDiv.appendChild(resizeGrip);
 
-function clampButtonToViewport(left, top, width, height) {
-    const maxLeft = Math.max(0, window.innerWidth - width);
-    const maxTop = Math.max(0, window.innerHeight - height);
+// The sort/edit/set-picker controls (#sort-buttons-container) are absolutely
+// positioned relative to buttonDiv and overhang it (above or below, left- or
+// right-aligned). Measure how far the visible cluster extends past buttonDiv so
+// the clamp keeps the *whole* cluster on-screen, not just the buttons.
+function getClusterOverhang() {
+    const divRect = buttonDiv.getBoundingClientRect();
+    let left = divRect.left, top = divRect.top, right = divRect.right, bottom = divRect.bottom;
+    const sortC = document.getElementById('sort-buttons-container');
+    if (sortC && sortC.offsetParent !== null) {
+        const r = sortC.getBoundingClientRect();
+        left = Math.min(left, r.left);
+        top = Math.min(top, r.top);
+        right = Math.max(right, r.right);
+        bottom = Math.max(bottom, r.bottom);
+    }
     return {
-        left: Math.max(0, Math.min(left, maxLeft)),
-        top: Math.max(0, Math.min(top, maxTop))
+        overLeft: divRect.left - left,   // how far the cluster sticks out to the left of buttonDiv
+        overTop: divRect.top - top,      // ...above buttonDiv
+        width: right - left,
+        height: bottom - top
     };
+}
+
+function clampButtonToViewport(left, top) {
+    const o = getClusterOverhang();
+    let visLeft = left - o.overLeft;
+    let visTop = top - o.overTop;
+    visLeft = Math.max(0, Math.min(visLeft, Math.max(0, window.innerWidth - o.width)));
+    visTop = Math.max(0, Math.min(visTop, Math.max(0, window.innerHeight - o.height)));
+    return { left: visLeft + o.overLeft, top: visTop + o.overTop };
+}
+
+// Snap the sort/edit/set controls to the side and vertical edge nearest the
+// cluster, instead of leaving them hard-anchored to the top-right. Mirrors the
+// corner-preset behaviour so they don't clip off-screen when moved.
+function alignSortContainerToCluster() {
+    const sortC = document.getElementById('sort-buttons-container');
+    if (!sortC) return;
+    const r = buttonDiv.getBoundingClientRect();
+    if ((r.left + r.width / 2) < window.innerWidth / 2) {
+        sortC.style.left = '0'; sortC.style.right = 'auto';
+    } else {
+        sortC.style.right = '0'; sortC.style.left = 'auto';
+    }
+    if ((r.top + r.height / 2) < window.innerHeight / 2) {
+        sortC.style.top = '100%'; sortC.style.bottom = 'auto';   // controls below the buttons
+    } else {
+        sortC.style.bottom = '100%'; sortC.style.top = 'auto';   // controls above the buttons
+    }
 }
 
 function applyFreeButtonPosition() {
     if (!freeButtonPosition) return;
-    const rect = buttonDiv.getBoundingClientRect();
-    const pos = clampButtonToViewport(freeButtonPosition.left, freeButtonPosition.top, rect.width, rect.height);
+    alignSortContainerToCluster();
+    const pos = clampButtonToViewport(freeButtonPosition.left, freeButtonPosition.top);
     buttonDiv.style.top = pos.top + 'px';
     buttonDiv.style.left = pos.left + 'px';
     buttonDiv.style.right = 'auto';
     buttonDiv.style.bottom = 'auto';
+    alignSortContainerToCluster();
 }
 
 function applyFreeButtonSize() {
@@ -738,12 +782,12 @@ function resetFreeButtonLayout() {
 let isButtonDragging = false, clusterDragOffsetX = 0, clusterDragOffsetY = 0;
 function onButtonDragMove(e) {
     if (!isButtonDragging) return;
-    const rect = buttonDiv.getBoundingClientRect();
-    const pos = clampButtonToViewport(e.clientX - clusterDragOffsetX, e.clientY - clusterDragOffsetY, rect.width, rect.height);
+    const pos = clampButtonToViewport(e.clientX - clusterDragOffsetX, e.clientY - clusterDragOffsetY);
     buttonDiv.style.top = pos.top + 'px';
     buttonDiv.style.left = pos.left + 'px';
     buttonDiv.style.right = 'auto';
     buttonDiv.style.bottom = 'auto';
+    alignSortContainerToCluster();
 }
 function onButtonDragEnd() {
     if (!isButtonDragging) return;

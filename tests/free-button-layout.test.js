@@ -38,8 +38,32 @@ describe('Free button positioning & resizing (issue #54)', () => {
 
     test('position is clamped into the viewport (on apply and on window resize)', () => {
         expect(contentSource).toMatch(/function clampButtonToViewport/);
-        expect(contentSource).toMatch(/window\.innerWidth - width/);
+        expect(contentSource).toMatch(/window\.innerWidth - o\.width/);
         expect(contentSource).toMatch(/window\.addEventListener\('resize', function\(\) \{\s*if \(freeButtonPosition\) applyFreeButtonPosition\(\);/);
+    });
+
+    test('clamp accounts for the overhanging sort/edit/set controls (no top-edge clipping)', () => {
+        // #54 follow-up: the sort-buttons-container is absolutely positioned and
+        // overhangs buttonDiv, so clamping on buttonDiv alone let it clip past
+        // the top edge. The clamp now measures the full cluster extent.
+        expect(contentSource).toMatch(/function getClusterOverhang/);
+        expect(contentSource).toMatch(/getElementById\('sort-buttons-container'\)/);
+        expect(contentSource).toMatch(/overTop: divRect\.top - top/);
+        expect(contentSource).toMatch(/visTop = top - o\.overTop/);
+    });
+
+    test('sort/edit/set controls snap to the nearest side and vertical edge', () => {
+        // #54 follow-up: they stayed right-aligned regardless of where the
+        // cluster was dragged. Now they snap left/right and above/below.
+        expect(contentSource).toMatch(/function alignSortContainerToCluster/);
+        expect(contentSource).toMatch(/sortC\.style\.left = '0'; sortC\.style\.right = 'auto'/);
+        expect(contentSource).toMatch(/sortC\.style\.right = '0'; sortC\.style\.left = 'auto'/);
+        expect(contentSource).toMatch(/sortC\.style\.top = '100%'; sortC\.style\.bottom = 'auto'/);
+        expect(contentSource).toMatch(/sortC\.style\.bottom = '100%'; sortC\.style\.top = 'auto'/);
+    });
+
+    test('alignment is re-applied live while dragging', () => {
+        expect(contentSource).toMatch(/function onButtonDragMove[\s\S]*?alignSortContainerToCluster\(\);/);
     });
 
     test('resize overrides the max-width cap so the cluster can grow', () => {
