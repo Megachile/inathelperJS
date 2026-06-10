@@ -752,12 +752,17 @@ function getClusterOverhang() {
     };
 }
 
+// Use the documentElement client box, not window.inner*, so the cluster (and
+// its right-/bottom-sticking grips) stays clear of the scrollbar gutter.
+function viewportW() { return document.documentElement.clientWidth || window.innerWidth; }
+function viewportH() { return document.documentElement.clientHeight || window.innerHeight; }
+
 function clampButtonToViewport(left, top) {
     const o = getClusterOverhang();
     let visLeft = left - o.overLeft;
     let visTop = top - o.overTop;
-    visLeft = Math.max(0, Math.min(visLeft, Math.max(0, window.innerWidth - o.width)));
-    visTop = Math.max(0, Math.min(visTop, Math.max(0, window.innerHeight - o.height)));
+    visLeft = Math.max(0, Math.min(visLeft, Math.max(0, viewportW() - o.width)));
+    visTop = Math.max(0, Math.min(visTop, Math.max(0, viewportH() - o.height)));
     return { left: visLeft + o.overLeft, top: visTop + o.overTop };
 }
 
@@ -768,12 +773,12 @@ function alignSortContainerToCluster() {
     const sortC = document.getElementById('sort-buttons-container');
     if (!sortC) return;
     const r = buttonDiv.getBoundingClientRect();
-    if ((r.left + r.width / 2) < window.innerWidth / 2) {
+    if ((r.left + r.width / 2) < viewportW() / 2) {
         sortC.style.left = '0'; sortC.style.right = 'auto';
     } else {
         sortC.style.right = '0'; sortC.style.left = 'auto';
     }
-    if ((r.top + r.height / 2) < window.innerHeight / 2) {
+    if ((r.top + r.height / 2) < viewportH() / 2) {
         sortC.style.top = '100%'; sortC.style.bottom = 'auto';   // controls below the buttons
     } else {
         sortC.style.bottom = '100%'; sortC.style.top = 'auto';   // controls above the buttons
@@ -1651,11 +1656,12 @@ style.textContent += `
   #button-drag-handle {
       display: flex;
       align-items: center;
-      justify-content: space-between;
-      font-size: 13px;
+      justify-content: flex-end;
+      gap: 10px;
+      font-size: 14px;
       line-height: 1;
       color: #888;
-      padding: 2px 4px;
+      padding: 2px 6px;
       user-select: none;
   }
   #button-move-grip {
@@ -1663,17 +1669,11 @@ style.textContent += `
       opacity: 0.55;
   }
   #button-move-grip:hover { opacity: 1; }
-  /* Gear stays hidden until the cluster is hovered, then toggles the menu. */
+  /* Gear is always visible (discoverable) and toggles the sort/edit/set menu. */
   #button-gear {
       cursor: pointer;
-      opacity: 0;
-      pointer-events: none;
+      opacity: 0.65;
       transition: opacity 0.15s ease;
-  }
-  #custom-extension-wrapper:hover #button-gear,
-  #custom-extension-wrapper.menu-open #button-gear {
-      opacity: 0.55;
-      pointer-events: auto;
   }
   #button-gear:hover,
   #custom-extension-wrapper.menu-open #button-gear { opacity: 1; }

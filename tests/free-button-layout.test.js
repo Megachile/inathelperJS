@@ -38,8 +38,15 @@ describe('Free button positioning & resizing (issue #54)', () => {
 
     test('position is clamped into the viewport (on apply and on window resize)', () => {
         expect(contentSource).toMatch(/function clampButtonToViewport/);
-        expect(contentSource).toMatch(/window\.innerWidth - o\.width/);
+        expect(contentSource).toMatch(/viewportW\(\) - o\.width/);
         expect(contentSource).toMatch(/window\.addEventListener\('resize', function\(\) \{\s*if \(freeButtonPosition\) applyFreeButtonPosition\(\);/);
+    });
+
+    test('clamp excludes the scrollbar gutter (documentElement.clientWidth, not innerWidth)', () => {
+        // Right-/bottom-sticking grips were sliding under the scrollbar because
+        // window.innerWidth includes it; clientWidth does not.
+        expect(contentSource).toMatch(/function viewportW\(\) \{ return document\.documentElement\.clientWidth/);
+        expect(contentSource).toMatch(/function viewportH\(\) \{ return document\.documentElement\.clientHeight/);
     });
 
     test('clamp accounts for the overhanging sort/edit/set controls (no top-edge clipping)', () => {
@@ -91,11 +98,16 @@ describe('Free button positioning & resizing (issue #54)', () => {
         expect(contentSource).toMatch(/#custom-extension-wrapper\.menu-open #sort-buttons-container \{[\s\S]*?opacity: 1;[\s\S]*?pointer-events: auto;/);
     });
 
-    test('a gear button is added, hover-revealed, and toggles the menu', () => {
+    test('a gear button is added (always visible) and toggles the menu', () => {
         expect(contentSource).toMatch(/id = 'button-gear'/);
-        // Gear is hidden until hover; visible on wrapper hover or when menu is open.
-        expect(contentSource).toMatch(/#custom-extension-wrapper:hover #button-gear,\s*#custom-extension-wrapper\.menu-open #button-gear \{/);
+        // Gear is always visible for discoverability, brighter on hover/open.
+        expect(contentSource).toMatch(/#button-gear \{[\s\S]*?cursor: pointer;[\s\S]*?opacity: 0\.65;/);
+        expect(contentSource).toMatch(/#button-gear:hover,\s*#custom-extension-wrapper\.menu-open #button-gear \{ opacity: 1; \}/);
         expect(contentSource).toMatch(/gearButton\.addEventListener\('click', function\(e\) \{[\s\S]*?buttonDiv\.classList\.toggle\('menu-open'\)/);
+    });
+
+    test('the grip + gear are grouped to the right, not spread to opposite edges', () => {
+        expect(contentSource).toMatch(/#button-drag-handle \{[\s\S]*?justify-content: flex-end;/);
     });
 
     test('click-away closes the gear menu', () => {
