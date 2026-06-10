@@ -84,11 +84,37 @@ describe('Free button positioning & resizing (issue #54)', () => {
         expect(contentSource).toMatch(/buttonDiv\.id = 'custom-extension-wrapper'/);
     });
 
-    test('utility controls are hidden by default and revealed on hover (#54 polish)', () => {
+    test('utility controls are hidden by default and revealed behind the gear (#54 polish)', () => {
         // The sort/edit/set controls take up permanent space for rarely-used
-        // actions, so they fade in only when the cluster is hovered.
+        // actions, so they hide behind a gear and only show when the menu is open.
         expect(contentSource).toMatch(/#sort-buttons-container \{[\s\S]*?opacity: 0;[\s\S]*?pointer-events: none;[\s\S]*?\}/);
-        expect(contentSource).toMatch(/#custom-extension-wrapper:hover #sort-buttons-container \{[\s\S]*?opacity: 1;[\s\S]*?pointer-events: auto;/);
+        expect(contentSource).toMatch(/#custom-extension-wrapper\.menu-open #sort-buttons-container \{[\s\S]*?opacity: 1;[\s\S]*?pointer-events: auto;/);
+    });
+
+    test('a gear button is added, hover-revealed, and toggles the menu', () => {
+        expect(contentSource).toMatch(/id = 'button-gear'/);
+        // Gear is hidden until hover; visible on wrapper hover or when menu is open.
+        expect(contentSource).toMatch(/#custom-extension-wrapper:hover #button-gear,\s*#custom-extension-wrapper\.menu-open #button-gear \{/);
+        expect(contentSource).toMatch(/gearButton\.addEventListener\('click', function\(e\) \{[\s\S]*?buttonDiv\.classList\.toggle\('menu-open'\)/);
+    });
+
+    test('click-away closes the gear menu', () => {
+        expect(contentSource).toMatch(/document\.addEventListener\('click', function\(e\) \{[\s\S]*?!buttonDiv\.contains\(e\.target\)[\s\S]*?classList\.remove\('menu-open'\)/);
+    });
+
+    test('only the move grip starts a drag (gear clicks do not move the cluster)', () => {
+        expect(contentSource).toMatch(/id = 'button-move-grip'/);
+        expect(contentSource).toMatch(/moveGrip\.addEventListener\('mousedown'/);
+    });
+
+    test('resize uses min-height (not a hard height) so content never spills out', () => {
+        // Fixes the "toolbar lands in the middle of the buttons" bug: a hard
+        // height with overflow:visible let buttons spill past the box edge.
+        expect(contentSource).toMatch(/buttonContainer\.style\.minHeight = h \+ 'px'/);
+        expect(contentSource).toMatch(/buttonContainer\.style\.minHeight = freeButtonSize\.height \+ 'px'/);
+        expect(contentSource).not.toMatch(/buttonContainer\.style\.height = h \+ 'px'/);
+        // align-content keeps wrapped rows top-packed when min-height adds slack.
+        expect(contentSource).toMatch(/align-content: flex-start/);
     });
 
     test('resize grip is offset off the corner and also hover-revealed', () => {

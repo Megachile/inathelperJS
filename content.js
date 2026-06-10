@@ -176,7 +176,7 @@ function createShortcutList() {
         <li>Shift + V: Toggle bulk action box</li>
         <li>Alt + N: Cycle button position (resets free move/resize)</li>
         <li>Drag the ☰ handle to move buttons freely; drag the corner grip to resize</li>
-        <li>Sort / Edit / Set-picker controls appear when you hover the buttons</li>
+        <li>Hover the buttons and click the ⚙ gear for Sort / Edit / Set-picker controls</li>
         <li>Ctrl + Shift + R: Toggle refresh</li>
         <li>Alt + H: Toggle this shortcut list</li>
         <li>Alt + S: Cycle through button sets</li>
@@ -687,12 +687,37 @@ document.body.appendChild(buttonDiv);
 let freeButtonPosition = null; // {left, top} in px, or null
 let freeButtonSize = null;     // {width, height} in px, or null
 
-// Drag handle (slim grip bar at the top of the cluster).
+// Slim control strip at the top of the cluster: a move grip on the left and a
+// gear on the right. The gear reveals on hover and toggles the sort/edit/set
+// controls (#sort-buttons-container) so those rarely-used buttons don't take up
+// permanent space.
 const dragHandle = document.createElement('div');
 dragHandle.id = 'button-drag-handle';
-dragHandle.title = 'Drag to move buttons — Alt+N snaps back to a corner';
-dragHandle.textContent = '☰'; // trigram / grip glyph
+
+const moveGrip = document.createElement('span');
+moveGrip.id = 'button-move-grip';
+moveGrip.textContent = '☰'; // trigram / grip glyph
+moveGrip.title = 'Drag to move buttons — Alt+N snaps back to a corner';
+
+const gearButton = document.createElement('span');
+gearButton.id = 'button-gear';
+gearButton.textContent = '⚙';
+gearButton.title = 'Sort / Edit layout / Switch set';
+
+dragHandle.appendChild(moveGrip);
+dragHandle.appendChild(gearButton);
 buttonDiv.insertBefore(dragHandle, buttonContainer);
+
+// Gear toggles the menu; click-away closes it.
+gearButton.addEventListener('click', function(e) {
+    e.stopPropagation();
+    buttonDiv.classList.toggle('menu-open');
+});
+document.addEventListener('click', function(e) {
+    if (buttonDiv.classList.contains('menu-open') && !buttonDiv.contains(e.target)) {
+        buttonDiv.classList.remove('menu-open');
+    }
+});
 
 // Resize grip (corner handle on the button container). A custom grip is used
 // instead of CSS `resize` so the container can keep `overflow: visible` and not
@@ -770,7 +795,10 @@ function applyFreeButtonSize() {
     if (!freeButtonSize) return;
     buttonContainer.style.maxWidth = 'none';
     buttonContainer.style.width = freeButtonSize.width + 'px';
-    buttonContainer.style.height = freeButtonSize.height + 'px';
+    // min-height (not a hard height) so taller content always stays inside the
+    // box — otherwise overflow spills out and the toolbar/grip, which anchor to
+    // the box edge, end up in the middle of the buttons.
+    buttonContainer.style.minHeight = freeButtonSize.height + 'px';
 }
 
 function resetFreeButtonLayout() {
@@ -778,7 +806,7 @@ function resetFreeButtonLayout() {
     freeButtonSize = null;
     buttonContainer.style.maxWidth = '';
     buttonContainer.style.width = '';
-    buttonContainer.style.height = '';
+    buttonContainer.style.minHeight = '';
     browserAPI.storage.local.remove(['buttonFreePosition', 'buttonFreeSize']);
 }
 
@@ -802,7 +830,8 @@ function onButtonDragEnd() {
     freeButtonPosition = { left: rect.left, top: rect.top };
     browserAPI.storage.local.set({ buttonFreePosition: freeButtonPosition });
 }
-dragHandle.addEventListener('mousedown', function(e) {
+// Only the move grip starts a drag (so clicking the gear doesn't move things).
+moveGrip.addEventListener('mousedown', function(e) {
     isButtonDragging = true;
     const rect = buttonDiv.getBoundingClientRect();
     clusterDragOffsetX = e.clientX - rect.left;
@@ -819,14 +848,17 @@ function onButtonResizeMove(e) {
     const w = Math.max(80, resizeStartW + (e.clientX - resizeStartX));
     const h = Math.max(28, resizeStartH + (e.clientY - resizeStartY));
     buttonContainer.style.width = w + 'px';
-    buttonContainer.style.height = h + 'px';
+    buttonContainer.style.minHeight = h + 'px';
 }
 function onButtonResizeEnd() {
     if (!isButtonResizing) return;
     isButtonResizing = false;
     document.removeEventListener('mousemove', onButtonResizeMove);
     document.removeEventListener('mouseup', onButtonResizeEnd);
-    freeButtonSize = { width: buttonContainer.offsetWidth, height: buttonContainer.offsetHeight };
+    freeButtonSize = {
+        width: buttonContainer.offsetWidth,
+        height: parseInt(buttonContainer.style.minHeight, 10) || buttonContainer.offsetHeight
+    };
     browserAPI.storage.local.set({ buttonFreeSize: freeButtonSize });
 }
 resizeGrip.addEventListener('mousedown', function(e) {
@@ -1612,20 +1644,39 @@ style.textContent += `
       display: flex;
       flex-direction: var(--button-flex-direction, row);
       flex-wrap: wrap;
+      align-content: flex-start;
       gap: 5px;
       max-width: var(--button-container-max-width, 600px);
   }
   #button-drag-handle {
-      cursor: move;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
       font-size: 13px;
       line-height: 1;
       color: #888;
-      text-align: center;
       padding: 2px 4px;
       user-select: none;
+  }
+  #button-move-grip {
+      cursor: move;
       opacity: 0.55;
   }
-  #button-drag-handle:hover { opacity: 1; }
+  #button-move-grip:hover { opacity: 1; }
+  /* Gear stays hidden until the cluster is hovered, then toggles the menu. */
+  #button-gear {
+      cursor: pointer;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.15s ease;
+  }
+  #custom-extension-wrapper:hover #button-gear,
+  #custom-extension-wrapper.menu-open #button-gear {
+      opacity: 0.55;
+      pointer-events: auto;
+  }
+  #button-gear:hover,
+  #custom-extension-wrapper.menu-open #button-gear { opacity: 1; }
   #button-resize-grip {
       position: absolute;
       right: -7px;
@@ -1758,8 +1809,9 @@ style.textContent += `
         pointer-events: none;
         transition: opacity 0.15s ease;
     }
-    /* Reveal the rarely-used sort/edit/set controls only on hover (issue #54). */
-    #custom-extension-wrapper:hover #sort-buttons-container {
+    /* Reveal the rarely-used sort/edit/set controls only when the gear menu is
+       open (issue #54). The gear itself is hover-revealed. */
+    #custom-extension-wrapper.menu-open #sort-buttons-container {
         opacity: 1;
         pointer-events: auto;
     }
