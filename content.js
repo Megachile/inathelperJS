@@ -1664,19 +1664,25 @@ style.textContent += `
       padding: 2px 6px;
       user-select: none;
   }
-  #button-move-grip {
-      cursor: move;
-      opacity: 0.55;
+  /* Grip + gear are hidden at rest; hovering the cluster reveals them larger
+     and darker. Scale (not font-size) is used so revealing them doesn't reflow
+     the buttons. The gear also stays shown while its menu is open. */
+  #button-move-grip, #button-gear {
+      color: #777;
+      opacity: 0;
+      transition: opacity 0.12s ease, color 0.12s ease, transform 0.12s ease;
   }
-  #button-move-grip:hover { opacity: 1; }
-  /* Gear is always visible (discoverable) and toggles the sort/edit/set menu. */
-  #button-gear {
-      cursor: pointer;
-      opacity: 0.65;
-      transition: opacity 0.15s ease;
+  #button-move-grip { cursor: move; }
+  #button-gear { cursor: pointer; }
+  #custom-extension-wrapper:hover #button-move-grip,
+  #custom-extension-wrapper:hover #button-gear,
+  #custom-extension-wrapper.menu-open #button-gear {
+      opacity: 1;
+      color: #333;
+      transform: scale(1.25);
   }
-  #button-gear:hover,
-  #custom-extension-wrapper.menu-open #button-gear { opacity: 1; }
+  #button-move-grip:hover,
+  #button-gear:hover { color: #000; transform: scale(1.4); }
   #button-resize-grip {
       position: absolute;
       right: -7px;

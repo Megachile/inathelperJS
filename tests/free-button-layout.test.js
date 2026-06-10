@@ -98,12 +98,15 @@ describe('Free button positioning & resizing (issue #54)', () => {
         expect(contentSource).toMatch(/#custom-extension-wrapper\.menu-open #sort-buttons-container \{[\s\S]*?opacity: 1;[\s\S]*?pointer-events: auto;/);
     });
 
-    test('a gear button is added (always visible) and toggles the menu', () => {
+    test('a gear button is added and toggles the menu', () => {
         expect(contentSource).toMatch(/id = 'button-gear'/);
-        // Gear is always visible for discoverability, brighter on hover/open.
-        expect(contentSource).toMatch(/#button-gear \{[\s\S]*?cursor: pointer;[\s\S]*?opacity: 0\.65;/);
-        expect(contentSource).toMatch(/#button-gear:hover,\s*#custom-extension-wrapper\.menu-open #button-gear \{ opacity: 1; \}/);
         expect(contentSource).toMatch(/gearButton\.addEventListener\('click', function\(e\) \{[\s\S]*?buttonDiv\.classList\.toggle\('menu-open'\)/);
+    });
+
+    test('grip + gear are hidden until hover, then enlarge and darken', () => {
+        expect(contentSource).toMatch(/#button-move-grip, #button-gear \{[\s\S]*?opacity: 0;/);
+        expect(contentSource).toMatch(/#custom-extension-wrapper:hover #button-move-grip,\s*#custom-extension-wrapper:hover #button-gear,\s*#custom-extension-wrapper\.menu-open #button-gear \{[\s\S]*?opacity: 1;[\s\S]*?transform: scale\(1\.25\);/);
+        expect(contentSource).toMatch(/#button-move-grip:hover,\s*#button-gear:hover \{ color: #000; transform: scale\(1\.4\); \}/);
     });
 
     test('the grip + gear are grouped to the right, not spread to opposite edges', () => {
