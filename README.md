@@ -37,7 +37,7 @@ The page has inline guidance for each action type. Once configured, your buttons
 This extension is genuinely under active development and welcomes feedback from anyone who uses it.
 
 - **Bug reports and feature requests:** [open an issue](https://github.com/Megachile/inathelperJS/issues) — even half-formed thoughts ("this seems weird?", "what if it could do X?") are useful.
-- **Pull requests:** welcome. Run `npm test` before submitting (256 tests; see [TEST_README.md](TEST_README.md)).
+- **Pull requests:** welcome. Run `npm test` before submitting (309 tests; see [TEST_README.md](TEST_README.md)).
 
 ### Local development
 

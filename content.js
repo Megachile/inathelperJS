@@ -174,7 +174,9 @@ function createShortcutList() {
     list.innerHTML = `
         <li>Shift + B: Toggle button visibility</li>
         <li>Shift + V: Toggle bulk action box</li>
-        <li>Alt + N: Cycle button position</li>
+        <li>Alt + N: Cycle button position (resets free move/resize)</li>
+        <li>Drag the ☰ handle to move buttons freely; drag the corner grip to resize</li>
+        <li>Hover the buttons and click the ⚙ gear for Sort / Edit / Set-picker controls</li>
         <li>Ctrl + Shift + R: Toggle refresh</li>
         <li>Alt + H: Toggle this shortcut list</li>
         <li>Alt + S: Cycle through button sets</li>
@@ -380,6 +382,8 @@ function toggleButtonVisibility() {
 }
 
 function cycleButtonPosition() {
+    // Alt+N doubles as the "snap back to a corner" reset for free drag/resize.
+    if (typeof resetFreeButtonLayout === 'function') resetFreeButtonLayout();
     currentPositionIndex = (currentPositionIndex + 1) % positions.length;
     buttonPosition = positions[currentPositionIndex];
     updatePositions();
@@ -451,6 +455,11 @@ function updatePositions() {
                 idDisplay.style.left = '10px';
             }
             break;
+    }
+    // A saved free position overrides the corner preset (e.g. after a re-render),
+    // including re-snapping the sort/edit/set controls to the nearest side/edge.
+    if (typeof freeButtonPosition !== 'undefined' && freeButtonPosition) {
+        applyFreeButtonPosition();
     }
     updateBulkButtonPosition();
 }
@@ -660,6 +669,7 @@ function animateButton(button) {
 
 // Create buttons and add them to the page
 let buttonDiv = document.createElement('div');
+buttonDiv.id = 'custom-extension-wrapper';
 buttonDiv.style.position = 'fixed';
 buttonDiv.style.zIndex = '10000';
 
@@ -668,6 +678,224 @@ buttonContainer.id = 'custom-extension-container';
 
 buttonDiv.appendChild(buttonContainer);
 document.body.appendChild(buttonDiv);
+
+// --- Free positioning & resizing (issue #54) ---------------------------------
+// Beyond the four corner presets (Alt+N), the whole button cluster can be
+// dragged anywhere via a grip handle and resized via a corner grip. The chosen
+// position/size persist to storage.local and take precedence over the corner
+// preset. Alt+N clears them again, acting as a "snap back to a corner" reset.
+let freeButtonPosition = null; // {left, top} in px, or null
+let freeButtonSize = null;     // {width, height} in px, or null
+
+// Slim control strip at the top of the cluster: a move grip on the left and a
+// gear on the right. The gear reveals on hover and toggles the sort/edit/set
+// controls (#sort-buttons-container) so those rarely-used buttons don't take up
+// permanent space.
+const dragHandle = document.createElement('div');
+dragHandle.id = 'button-drag-handle';
+
+const moveGrip = document.createElement('span');
+moveGrip.id = 'button-move-grip';
+moveGrip.textContent = '☰'; // trigram / grip glyph
+moveGrip.title = 'Drag to move buttons — Alt+N snaps back to a corner';
+
+const gearButton = document.createElement('span');
+gearButton.id = 'button-gear';
+gearButton.textContent = '⚙';
+gearButton.title = 'Sort / Edit layout / Switch set';
+
+dragHandle.appendChild(moveGrip);
+dragHandle.appendChild(gearButton);
+buttonDiv.insertBefore(dragHandle, buttonContainer);
+
+// Gear toggles the menu; click-away closes it.
+gearButton.addEventListener('click', function(e) {
+    e.stopPropagation();
+    buttonDiv.classList.toggle('menu-open');
+});
+document.addEventListener('click', function(e) {
+    if (buttonDiv.classList.contains('menu-open') && !buttonDiv.contains(e.target)) {
+        buttonDiv.classList.remove('menu-open');
+    }
+});
+
+// Resize grip (corner handle on the button container). A custom grip is used
+// instead of CSS `resize` so the container can keep `overflow: visible` and not
+// clip button tooltips.
+const resizeGrip = document.createElement('div');
+resizeGrip.id = 'button-resize-grip';
+resizeGrip.title = 'Drag to resize the button area';
+buttonDiv.appendChild(resizeGrip);
+
+// The sort/edit/set-picker controls (#sort-buttons-container) are absolutely
+// positioned relative to buttonDiv and overhang it (above or below, left- or
+// right-aligned). Measure how far the visible cluster extends past buttonDiv so
+// the clamp keeps the *whole* cluster on-screen, not just the buttons.
+function getClusterOverhang() {
+    const divRect = buttonDiv.getBoundingClientRect();
+    let left = divRect.left, top = divRect.top, right = divRect.right, bottom = divRect.bottom;
+    const overhangers = [document.getElementById('sort-buttons-container'), resizeGrip];
+    overhangers.forEach(el => {
+        if (el && el.offsetParent !== null) {
+            const r = el.getBoundingClientRect();
+            left = Math.min(left, r.left);
+            top = Math.min(top, r.top);
+            right = Math.max(right, r.right);
+            bottom = Math.max(bottom, r.bottom);
+        }
+    });
+    return {
+        overLeft: divRect.left - left,   // how far the cluster sticks out to the left of buttonDiv
+        overTop: divRect.top - top,      // ...above buttonDiv
+        width: right - left,
+        height: bottom - top
+    };
+}
+
+// Use the documentElement client box, not window.inner*, so the cluster (and
+// its right-/bottom-sticking grips) stays clear of the scrollbar gutter.
+function viewportW() { return document.documentElement.clientWidth || window.innerWidth; }
+function viewportH() { return document.documentElement.clientHeight || window.innerHeight; }
+
+function clampButtonToViewport(left, top) {
+    const o = getClusterOverhang();
+    let visLeft = left - o.overLeft;
+    let visTop = top - o.overTop;
+    visLeft = Math.max(0, Math.min(visLeft, Math.max(0, viewportW() - o.width)));
+    visTop = Math.max(0, Math.min(visTop, Math.max(0, viewportH() - o.height)));
+    return { left: visLeft + o.overLeft, top: visTop + o.overTop };
+}
+
+// Snap the sort/edit/set controls to the side and vertical edge nearest the
+// cluster, instead of leaving them hard-anchored to the top-right. Mirrors the
+// corner-preset behaviour so they don't clip off-screen when moved.
+function alignSortContainerToCluster() {
+    const sortC = document.getElementById('sort-buttons-container');
+    if (!sortC) return;
+    const r = buttonDiv.getBoundingClientRect();
+    if ((r.left + r.width / 2) < viewportW() / 2) {
+        sortC.style.left = '0'; sortC.style.right = 'auto';
+    } else {
+        sortC.style.right = '0'; sortC.style.left = 'auto';
+    }
+    if ((r.top + r.height / 2) < viewportH() / 2) {
+        sortC.style.top = '100%'; sortC.style.bottom = 'auto';   // controls below the buttons
+    } else {
+        sortC.style.bottom = '100%'; sortC.style.top = 'auto';   // controls above the buttons
+    }
+}
+
+function applyFreeButtonPosition() {
+    if (!freeButtonPosition) return;
+    alignSortContainerToCluster();
+    const pos = clampButtonToViewport(freeButtonPosition.left, freeButtonPosition.top);
+    buttonDiv.style.top = pos.top + 'px';
+    buttonDiv.style.left = pos.left + 'px';
+    buttonDiv.style.right = 'auto';
+    buttonDiv.style.bottom = 'auto';
+    alignSortContainerToCluster();
+}
+
+function applyFreeButtonSize() {
+    if (!freeButtonSize) return;
+    buttonContainer.style.maxWidth = 'none';
+    buttonContainer.style.width = freeButtonSize.width + 'px';
+    // min-height (not a hard height) so taller content always stays inside the
+    // box — otherwise overflow spills out and the toolbar/grip, which anchor to
+    // the box edge, end up in the middle of the buttons.
+    buttonContainer.style.minHeight = freeButtonSize.height + 'px';
+}
+
+function resetFreeButtonLayout() {
+    freeButtonPosition = null;
+    freeButtonSize = null;
+    buttonContainer.style.maxWidth = '';
+    buttonContainer.style.width = '';
+    buttonContainer.style.minHeight = '';
+    browserAPI.storage.local.remove(['buttonFreePosition', 'buttonFreeSize']);
+}
+
+// Drag-to-move
+let isButtonDragging = false, clusterDragOffsetX = 0, clusterDragOffsetY = 0;
+function onButtonDragMove(e) {
+    if (!isButtonDragging) return;
+    const pos = clampButtonToViewport(e.clientX - clusterDragOffsetX, e.clientY - clusterDragOffsetY);
+    buttonDiv.style.top = pos.top + 'px';
+    buttonDiv.style.left = pos.left + 'px';
+    buttonDiv.style.right = 'auto';
+    buttonDiv.style.bottom = 'auto';
+    alignSortContainerToCluster();
+}
+function onButtonDragEnd() {
+    if (!isButtonDragging) return;
+    isButtonDragging = false;
+    document.removeEventListener('mousemove', onButtonDragMove);
+    document.removeEventListener('mouseup', onButtonDragEnd);
+    const rect = buttonDiv.getBoundingClientRect();
+    freeButtonPosition = { left: rect.left, top: rect.top };
+    browserAPI.storage.local.set({ buttonFreePosition: freeButtonPosition });
+}
+// Only the move grip starts a drag (so clicking the gear doesn't move things).
+moveGrip.addEventListener('mousedown', function(e) {
+    isButtonDragging = true;
+    const rect = buttonDiv.getBoundingClientRect();
+    clusterDragOffsetX = e.clientX - rect.left;
+    clusterDragOffsetY = e.clientY - rect.top;
+    e.preventDefault();
+    document.addEventListener('mousemove', onButtonDragMove);
+    document.addEventListener('mouseup', onButtonDragEnd);
+});
+
+// Drag-to-resize
+let isButtonResizing = false, resizeStartX = 0, resizeStartY = 0, resizeStartW = 0, resizeStartH = 0;
+function onButtonResizeMove(e) {
+    if (!isButtonResizing) return;
+    const w = Math.max(80, resizeStartW + (e.clientX - resizeStartX));
+    const h = Math.max(28, resizeStartH + (e.clientY - resizeStartY));
+    buttonContainer.style.width = w + 'px';
+    buttonContainer.style.minHeight = h + 'px';
+}
+function onButtonResizeEnd() {
+    if (!isButtonResizing) return;
+    isButtonResizing = false;
+    document.removeEventListener('mousemove', onButtonResizeMove);
+    document.removeEventListener('mouseup', onButtonResizeEnd);
+    freeButtonSize = {
+        width: buttonContainer.offsetWidth,
+        height: parseInt(buttonContainer.style.minHeight, 10) || buttonContainer.offsetHeight
+    };
+    browserAPI.storage.local.set({ buttonFreeSize: freeButtonSize });
+}
+resizeGrip.addEventListener('mousedown', function(e) {
+    isButtonResizing = true;
+    resizeStartX = e.clientX;
+    resizeStartY = e.clientY;
+    resizeStartW = buttonContainer.offsetWidth;
+    resizeStartH = buttonContainer.offsetHeight;
+    buttonContainer.style.maxWidth = 'none';
+    e.preventDefault();
+    e.stopPropagation();
+    document.addEventListener('mousemove', onButtonResizeMove);
+    document.addEventListener('mouseup', onButtonResizeEnd);
+});
+
+// Keep the cluster on-screen if the viewport shrinks.
+window.addEventListener('resize', function() {
+    if (freeButtonPosition) applyFreeButtonPosition();
+});
+
+// Restore any saved free layout.
+browserAPI.storage.local.get(['buttonFreePosition', 'buttonFreeSize'], function(data) {
+    if (data.buttonFreeSize) {
+        freeButtonSize = data.buttonFreeSize;
+        applyFreeButtonSize();
+    }
+    if (data.buttonFreePosition) {
+        freeButtonPosition = data.buttonFreePosition;
+        applyFreeButtonPosition();
+    }
+});
+// -----------------------------------------------------------------------------
 
 
 
@@ -1421,9 +1649,58 @@ style.textContent += `
       display: flex;
       flex-direction: var(--button-flex-direction, row);
       flex-wrap: wrap;
+      align-content: flex-start;
       gap: 5px;
       max-width: var(--button-container-max-width, 600px);
   }
+  #button-drag-handle {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 10px;
+      font-size: 14px;
+      line-height: 1;
+      color: #888;
+      padding: 2px 6px;
+      user-select: none;
+  }
+  /* Grip + gear are hidden at rest; hovering the cluster reveals them larger
+     and darker. Scale (not font-size) is used so revealing them doesn't reflow
+     the buttons. The gear also stays shown while its menu is open. */
+  #button-move-grip, #button-gear {
+      color: #777;
+      opacity: 0;
+      transition: opacity 0.12s ease, color 0.12s ease, transform 0.12s ease;
+  }
+  #button-move-grip { cursor: move; }
+  #button-gear { cursor: pointer; }
+  #custom-extension-wrapper:hover #button-move-grip,
+  #custom-extension-wrapper:hover #button-gear,
+  #custom-extension-wrapper.menu-open #button-gear {
+      opacity: 1;
+      color: #333;
+      transform: scale(1.25);
+  }
+  #button-move-grip:hover,
+  #button-gear:hover { color: #000; transform: scale(1.4); }
+  #button-resize-grip {
+      position: absolute;
+      right: -7px;
+      bottom: -7px;
+      width: 16px;
+      height: 16px;
+      cursor: nwse-resize;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.15s ease;
+      z-index: 10003;
+      background: linear-gradient(135deg, transparent 0 45%, #888 45% 55%, transparent 55% 70%, #888 70% 80%, transparent 80%);
+  }
+  #custom-extension-wrapper:hover #button-resize-grip {
+      opacity: 0.55;
+      pointer-events: auto;
+  }
+  #button-resize-grip:hover { opacity: 1 !important; }
     #custom-extension-container.dragging {
     height: var(--original-height);
     width: var(--original-width);
@@ -1534,6 +1811,15 @@ style.textContent += `
         top: -30px;
         right: 0;
         z-index: 10002;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.15s ease;
+    }
+    /* Reveal the rarely-used sort/edit/set controls only when the gear menu is
+       open (issue #54). The gear itself is hover-revealed. */
+    #custom-extension-wrapper.menu-open #sort-buttons-container {
+        opacity: 1;
+        pointer-events: auto;
     }
     #sort-button {
         background-color: rgba(0, 0, 0, 0.1);
