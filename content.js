@@ -1771,8 +1771,6 @@ style.textContent += `
         box-shadow: 0 0 0 6px var(--highlight-color, #FF6600);
     }
     #enable-bulk-mode-button {
-        position: fixed;
-        z-index: 10000;
         box-shadow: 0 2px 5px rgba(0,0,0,0.2);
     }
     #enable-bulk-mode-button:before {

@@ -412,32 +412,24 @@ function setupTaxonAutocomplete(inputElement, idElement) {
                         suggestion.innerHTML = `
                             <img src="${escapeHtml(safeTaxonPhoto)}" alt="${escapeHtml(taxon.name)}">
                             <span class="taxon-name">
-                                ${taxon.preferred_common_name ? `${escapeHtml(taxon.preferred_common_name)} (` : ''}
-                                <a href="${getINatSiteBase()}/taxa/${safeTaxonId}" target="_blank" class="taxon-link">
-                                    ${escapeHtml(taxon.name)}
-                                </a>
-                                ${taxon.preferred_common_name ? ')' : ''}
+                                ${taxon.preferred_common_name
+                                    ? `${escapeHtml(taxon.preferred_common_name)} (${escapeHtml(taxon.name)})`
+                                    : escapeHtml(taxon.name)}
+                                <a href="${getINatSiteBase()}/taxa/${safeTaxonId}" target="_blank" class="taxon-link" title="Open taxon page">↗</a>
                             </span>
                         `;
-                        suggestion.addEventListener('click', (event) => {
+                        suggestion.addEventListener('mousedown', (event) => {
                             if (event.target.tagName !== 'A') {
-                                event.preventDefault();
-                                const selectedName = taxon.preferred_common_name ? 
-                                    `${taxon.preferred_common_name} (${taxon.name})` : 
+                                event.preventDefault(); // prevent blur on the input, fires before blur
+                                const selectedName = taxon.preferred_common_name ?
+                                    `${taxon.preferred_common_name} (${taxon.name})` :
                                     taxon.name;
-                                debugLog('Taxon selected:', {
-                                    name: selectedName,
-                                    id: taxon.id,
-                                    inputElement: inputElement,
-                                    idElement: idElement,
-                                    dataset: inputElement.dataset
-                                });
+                                debugLog('Taxon selected:', taxon.name, 'ID:', taxon.id);
                                 inputElement.value = selectedName;
                                 inputElement.dataset.taxonId = taxon.id;
                                 if (idElement) idElement.value = taxon.id;
                                 suggestionContainer.innerHTML = '';
                                 suggestionContainer.style.display = 'none';
-                                debugLog('Taxon selected:', taxon.name, 'ID:', taxon.id);
                             }
                         });
                         suggestionContainer.appendChild(suggestion);
