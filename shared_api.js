@@ -378,9 +378,22 @@ function setupFieldAutocomplete(nameInput, idInput, fieldValueContainer, fieldDe
     });
 }
 
+// A neutral gray rectangle used in place of a taxon thumbnail when the taxon
+// has no photo (or its photo fails to load). Sized to match `.taxonSuggestion
+// img` (40x40 + 10px right margin) so row height and text alignment stay
+// consistent whether or not a photo is present.
+function createTaxonThumbPlaceholder() {
+    const placeholder = document.createElement('div');
+    placeholder.className = 'taxon-thumb-placeholder';
+    placeholder.style.cssText =
+        'width:40px;height:40px;margin-right:10px;border-radius:4px;' +
+        'background-color:#e0e0e0;flex-shrink:0;';
+    return placeholder;
+}
+
 function setupTaxonAutocomplete(inputElement, idElement) {
     debugLog('Setting up taxon autocomplete for:', inputElement);
-    
+
     const suggestionContainer = document.createElement('div');
     suggestionContainer.className = 'taxonSuggestions';
     suggestionContainer.style.position = 'absolute';
@@ -407,30 +420,51 @@ function setupTaxonAutocomplete(inputElement, idElement) {
                     taxa.forEach(taxon => {
                         const suggestion = document.createElement('div');
                         suggestion.className = 'taxonSuggestion';
-                        const safeTaxonPhoto = safeUrl(taxon.default_photo?.square_url) || 'placeholder.jpg';
+                        const safeTaxonPhoto = safeUrl(taxon.default_photo?.square_url);
                         const safeTaxonId = encodeURIComponent(taxon.id);
-                        suggestion.innerHTML = `
-                            <img src="${escapeHtml(safeTaxonPhoto)}" alt="${escapeHtml(taxon.name)}">
-                            <span class="taxon-name">
-                                ${taxon.preferred_common_name
-                                    ? `${escapeHtml(taxon.preferred_common_name)} (${escapeHtml(taxon.name)})`
-                                    : escapeHtml(taxon.name)}
-                                <a href="${getINatSiteBase()}/taxa/${safeTaxonId}" target="_blank" class="taxon-link" title="Open taxon page">↗</a>
-                            </span>
+                        const taxonUrl = `${getINatSiteBase()}/taxa/${safeTaxonId}`;
+                        // Show the photo when present; otherwise (or if it fails to load)
+                        // drop in a gray placeholder rectangle so text alignment stays
+                        // consistent. There is no bundled placeholder image, so a real
+                        // <img> fallback would render a broken-image icon.
+                        if (safeTaxonPhoto) {
+                            const img = document.createElement('img');
+                            img.src = safeTaxonPhoto;
+                            img.alt = taxon.name;
+                            img.onerror = () => { img.replaceWith(createTaxonThumbPlaceholder()); };
+                            suggestion.appendChild(img);
+                        } else {
+                            suggestion.appendChild(createTaxonThumbPlaceholder());
+                        }
+                        const nameSpan = document.createElement('span');
+                        nameSpan.className = 'taxon-name';
+                        nameSpan.innerHTML = `
+                            ${taxon.preferred_common_name
+                                ? `${escapeHtml(taxon.preferred_common_name)} (${escapeHtml(taxon.name)})`
+                                : escapeHtml(taxon.name)}
+                            <span class="taxon-link" role="link" tabindex="0" title="Open taxon page">↗</span>
                         `;
+                        suggestion.appendChild(nameSpan);
+                        // Use mousedown (not click) for both selecting and opening the link:
+                        // the input's blur handler wipes this dropdown after 200ms, which can
+                        // race ahead of a slow click. mousedown fires before blur, so we open
+                        // the taxon page programmatically rather than relying on an <a> click.
                         suggestion.addEventListener('mousedown', (event) => {
-                            if (event.target.tagName !== 'A') {
-                                event.preventDefault(); // prevent blur on the input, fires before blur
-                                const selectedName = taxon.preferred_common_name ?
-                                    `${taxon.preferred_common_name} (${taxon.name})` :
-                                    taxon.name;
-                                debugLog('Taxon selected:', taxon.name, 'ID:', taxon.id);
-                                inputElement.value = selectedName;
-                                inputElement.dataset.taxonId = taxon.id;
-                                if (idElement) idElement.value = taxon.id;
-                                suggestionContainer.innerHTML = '';
-                                suggestionContainer.style.display = 'none';
+                            event.preventDefault(); // prevent blur on the input, fires before blur
+                            if (event.target.classList.contains('taxon-link')) {
+                                debugLog('Opening taxon page:', taxonUrl);
+                                window.open(taxonUrl, '_blank', 'noopener');
+                                return;
                             }
+                            const selectedName = taxon.preferred_common_name ?
+                                `${taxon.preferred_common_name} (${taxon.name})` :
+                                taxon.name;
+                            debugLog('Taxon selected:', taxon.name, 'ID:', taxon.id);
+                            inputElement.value = selectedName;
+                            inputElement.dataset.taxonId = taxon.id;
+                            if (idElement) idElement.value = taxon.id;
+                            suggestionContainer.innerHTML = '';
+                            suggestionContainer.style.display = 'none';
                         });
                         suggestionContainer.appendChild(suggestion);
                     });

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.3.6] - 2026-06-30
+
+### Fixed
+- **The taxon autocomplete `↗` link was dead** (residual from #56, reported by @nyenyedzi on Firefox/Linux) — after v3.3.5 moved suggestion *selection* to `mousedown`, the `↗` "open taxon page" link still relied on an `<a>` element, which only activates on `click`. Since `click` fires after the input blurs, the ~200 ms blur teardown could remove the link before the click landed, so clicking `↗` just closed the dropdown and did nothing. The link is now a `<span>` opened programmatically via `window.open` inside the `mousedown` handler (which fires before blur), so both selecting a taxon and opening its page are now timing-independent.
+- **Taxa with no photo showed a broken-image icon** — the suggestion thumbnail fell back to a `placeholder.jpg` that isn't bundled with the extension. No-photo taxa (and images that fail to load) now show a neutral gray placeholder rectangle sized to match the thumbnail, so row height and text alignment stay consistent whether or not a photo is present.
+
 ## [3.3.5] - 2026-06-29
 
 ### Fixed
