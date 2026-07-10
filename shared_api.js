@@ -2272,6 +2272,8 @@ function createDetailedActionResultsModal(summaryByActionType, actionSetName, sk
                 : `Annotation: ${fieldName} = ${valueName}`;
         } else if (actionConfig.type === 'addTaxonId') {
             actionDisplayName = `Add ID: ${actionConfig.taxonName}`;
+        } else if (actionConfig.type === 'agreeId') {
+            actionDisplayName = `Agree with Community ID`;
         } else if (actionConfig.type === 'addComment') {
             actionDisplayName = `Add Comment: "${actionConfig.commentBody.substring(0,30)}..."`;
         } else if (actionConfig.type === 'qualityMetric') {

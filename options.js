@@ -544,6 +544,8 @@ function extractActionsFromForm() {
                 break;
             case 'withdrawId' :
                 break;
+            case 'agreeId':
+                break;
             case 'observationField':
                 action.fieldId = actionDiv.querySelector('.fieldId').value.trim();
                 action.fieldName = actionDiv.querySelector('.fieldName').value.trim();
@@ -673,6 +675,8 @@ function validateCommonConfiguration(config) {
                 }
                 break;                      
             case 'withdrawId' :
+                break;
+            case 'agreeId':
                 break;
             case 'observationField':
                 if (!action.fieldId || !action.fieldName || (!action.fieldValue && !action.promptForValue)) {
@@ -891,6 +895,8 @@ function populateActionInputs(actionDiv, action) {
             break;
         case 'withdrawId':
             break;
+        case 'agreeId':
+            break;
         case 'observationField':
             actionDiv.querySelector('.fieldName').value = action.fieldName || '';
             actionDiv.querySelector('.fieldId').value = action.fieldId || '';
@@ -994,6 +1000,7 @@ function addActionToForm(action = null) {
     actionDiv.innerHTML = `
         <select class="actionType">
             <option value="addTaxonId">Add Taxon ID</option>
+            <option value="agreeId">Agree with Community ID</option>
             <option value="withdrawId">Withdraw ID</option>
             <option value="addComment">Add Comment</option>
             <option value="annotation">Annotation</option> 
@@ -1548,6 +1555,8 @@ async function formatAction(action) {
             return `Copy value from "${action.sourceFieldName}" to "${action.targetFieldName}"`;
         case 'withdrawId' :
             return 'Withdraw active identification';
+        case 'agreeId':
+            return 'Agree with the community ID';
         case 'addToList':
             const listName = await getListName(action.listId);
             return action.remove ?

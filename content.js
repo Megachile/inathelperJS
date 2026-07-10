@@ -1380,6 +1380,57 @@ async function addTaxonId(observationId, taxonId, comment = '', disagreement = f
     }
 }
 
+// "Agree" on iNat is not a distinct endpoint — it just posts an identification of
+// the observation's current community (or leading) taxon. Unlike addTaxonId, the
+// target taxon isn't known at config time; it's resolved per-observation here at
+// run time, since a bulk selection can span many different community taxa.
+async function agreeWithObservation(observationId) {
+    if (!observationId) {
+        debugLog('No observation ID provided for agree.');
+        return { success: false, error: 'No observation ID provided' };
+    }
+
+    const jwt = await getJWT();
+    if (!jwt) {
+        console.error('No JWT found');
+        return { success: false, error: 'No JWT found' };
+    }
+
+    try {
+        const currentUserId = await getCurrentUserId();
+        const response = await makeAPIRequest(`/observations/${observationId}`);
+        const observation = response.results && response.results[0];
+        if (!observation) {
+            return { success: false, error: 'Observation not found' };
+        }
+
+        // Agree with the community taxon when one exists; otherwise fall back to the
+        // observation's leading taxon (single-ID observations have no community taxon).
+        const targetTaxonId = observation.community_taxon_id || observation.taxon?.id;
+        if (!targetTaxonId) {
+            debugLog(`Obs ${observationId} has no community/leading taxon to agree with. Skipping.`);
+            return { success: true, message: 'No community or leading ID to agree with', noActionNeeded: true };
+        }
+
+        // Skip if the user already has a current identification at this taxon —
+        // re-agreeing is a no-op on iNat and just wastes a request.
+        const alreadyAgreeing = (observation.identifications || []).some(
+            id => id.user?.id === currentUserId && id.current && id.taxon?.id === targetTaxonId
+        );
+        if (alreadyAgreeing) {
+            debugLog(`Obs ${observationId}: already have a current ID at taxon ${targetTaxonId}. Skipping.`);
+            return { success: true, message: 'Already agreeing with this taxon', noActionNeeded: true, taxonId: targetTaxonId };
+        }
+
+        // Agreeing is just posting an identification of the resolved taxon (never a disagreement).
+        const idResult = await addTaxonId(observationId, targetTaxonId, '', false);
+        return { ...idResult, taxonId: targetTaxonId, identificationUUID: idResult.identificationUUID };
+    } catch (error) {
+        console.error('Error agreeing with observation:', error);
+        return { success: false, error: safeErrorString(error) };
+    }
+}
+
 
 async function handleQualityMetricAPI(observationId, metric, vote) {
     const jwt = await getJWT();
@@ -2389,10 +2440,12 @@ async function performSingleAction(action, observationId) {
             return { ...commentResult, commentUUID: commentResult.uuid };
         case 'addTaxonId':
             const idResult = await addTaxonId(observationId, action.taxonId, action.comment, action.disagreement);
-            return { 
-                ...idResult, 
-                identificationUUID: idResult.identificationUUID 
+            return {
+                ...idResult,
+                identificationUUID: idResult.identificationUUID
             };
+        case 'agreeId':
+            return agreeWithObservation(observationId);
         case 'qualityMetric':
             return handleQualityMetricAPI(observationId, action.metric, action.vote);
         case 'addToList':
@@ -2400,8 +2453,13 @@ async function performSingleAction(action, observationId) {
         case 'addTag':
             return addTag(observationId, action.tagText);
         default:
+            // Return a proper failure object rather than undefined — a bare
+            // Promise.resolve() resolves to undefined, and the bulk loop then throws
+            // a cryptic "Cannot read properties of undefined (reading 'success')".
+            // This usually means the content script is stale (reload the extension +
+            // refresh the page after adding a new action type).
             console.warn(`Unknown action type: ${action.type}`);
-            return Promise.resolve();
+            return { success: false, error: `Unknown action type: ${action.type}` };
     }
 }
 
@@ -3724,8 +3782,8 @@ document.body.addEventListener('click', (e) => {
     if (bulkActionModeEnabled) {
         const clickedObsElement = e.target.closest('.ObservationsGridItem');
         if (clickedObsElement) {
-            // Allow Ctrl+click to open the identify modal even in bulk mode
-            if (e.ctrlKey) {
+            // Allow Ctrl+click (or Cmd+click on Mac) to open the identify modal even in bulk mode
+            if (e.ctrlKey || e.metaKey) {
                 // Don't prevent default - let the normal click behavior open the modal
                 return;
             }
@@ -4040,6 +4098,28 @@ async function executeBulkAction(selectedActionConfig, modal, isCancelledFunc) {
                             );
                             if (undoAction) {
                                 undoAction.previousTags = actionResult.previousTags;
+                            }
+                        }
+                        // Wire the posted identification's UUID into its undo record so a later
+                        // Undo can delete it (and restore the ID it auto-withdrew, already held in
+                        // previousIdentificationUUID). Without this the removeIdentification undo
+                        // silently no-ops. addTaxonId is matched by taxonId; agree resolves its
+                        // taxon at run time so it's matched by the source:'agree' marker. A no-op
+                        // agree posted nothing, so its phantom undo entry is dropped instead.
+                        if ((action.type === 'addTaxonId' || action.type === 'agreeId') &&
+                            actionResult.success && preliminaryUndoRecord.observations[observationId]) {
+                            const undoActions = preliminaryUndoRecord.observations[observationId].undoActions;
+                            const undoAction = undoActions.find(ua =>
+                                ua.type === 'removeIdentification' && !ua.identificationUUID &&
+                                (action.type === 'agreeId' ? ua.source === 'agree' : ua.taxonId === action.taxonId)
+                            );
+                            if (undoAction) {
+                                if (actionResult.identificationUUID) {
+                                    undoAction.identificationUUID = actionResult.identificationUUID;
+                                    if (action.type === 'agreeId') undoAction.taxonId = actionResult.taxonId;
+                                } else {
+                                    undoActions.splice(undoActions.indexOf(undoAction), 1);
+                                }
                             }
                         }
                     }
@@ -4568,6 +4648,23 @@ async function generatePreliminaryUndoRecord(action, observationIds, preActionSt
                         previousIdentificationUUID: currentIdentification ? currentIdentification.uuid : null
                     };
                     debugLog('Generated undo action:', undoAction);
+                    break;
+                case 'agreeId':
+                    // Like addTaxonId, undo removes the identification we post. The taxon is
+                    // resolved at run time, so taxonId is filled in by handleActionResult; the
+                    // `source: 'agree'` marker lets that matcher find this record.
+                    currentIdentification = preActionStates[observationId].identifications
+                        .filter(id => id.user.id === currentUserId && id.current)
+                        .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0];
+
+                    undoAction = {
+                        type: 'removeIdentification',
+                        source: 'agree',
+                        taxonId: null, // Filled in after the action resolves the community/leading taxon
+                        identificationUUID: null, // Filled in after the action is performed
+                        previousIdentificationUUID: currentIdentification ? currentIdentification.uuid : null
+                    };
+                    debugLog('Generated agree undo action:', undoAction);
                     break;
                 case 'qualityMetric':
                         undoAction = {
@@ -5357,7 +5454,10 @@ function updateActionDescription(actionSelect) {
                         break;                     
                     case 'withdrawId' :
                         actionDesc = `Withdraw your current identification`;
-                        break;  
+                        break;
+                    case 'agreeId' :
+                        actionDesc = `Agree with the community ID`;
+                        break;
                     case 'observationField':
                         if (action.promptForValue) {
                             actionDesc = `Set field "${action.fieldName}" (will prompt for value)`;
@@ -6658,6 +6758,9 @@ async function createValidationModal(validationResults, selectedAction, onConfir
                     case 'withdrawId':
                         actionDesc = `Withdraw your current identification`;
                         break;
+                    case 'agreeId':
+                        actionDesc = `Agree with the community ID`;
+                        break;
                     case 'observationField':
                         if (action.promptForValue) {
                             actionDesc = `Set field "${action.fieldName}" (will prompt for value)`;
@@ -7070,6 +7173,9 @@ function createActionDescription(selectedAction) {
                     case 'withdrawId':
                         actionDesc = `Withdraw your current identification`;
                         break;
+                    case 'agreeId':
+                        actionDesc = `Agree with the community ID`;
+                        break;
                     case 'observationField':
                         if (action.promptForValue) {
                             actionDesc = `Set field "${action.fieldName}" (will prompt for value)`;
@@ -7130,7 +7236,7 @@ async function handleFollowAndReviewPrevention(observationId, actions, results) 
     debugLog('Prevention settings:', { preventTaxonFollow, preventFieldFollow, preventTaxonReview });
 
     // Action type checks
-    const hasTaxonAction = actions.some(action => action.type === 'addTaxonId');
+    const hasTaxonAction = actions.some(action => action.type === 'addTaxonId' || action.type === 'agreeId');
     const hasFieldAction = actions.some(action => action.type === 'observationField');
     const hasExplicitFollowAction = actions.some(action => action.type === 'follow');
     const hasExplicitReviewAction = actions.some(action => action.type === 'reviewed');
