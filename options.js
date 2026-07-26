@@ -91,6 +91,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Event Listener for bulk action settings
     document.getElementById('autoRefreshAfterBulk').addEventListener('change', saveBulkActionSettings);
+    document.getElementById('hideBulkUi').addEventListener('change', saveBulkActionSettings);
 
     // Event Listeners for button layout settings
     document.getElementById('buttonMinWidth').addEventListener('change', saveButtonLayoutSettings);
@@ -549,6 +550,15 @@ function extractActionsFromForm() {
             case 'observationField':
                 action.fieldId = actionDiv.querySelector('.fieldId').value.trim();
                 action.fieldName = actionDiv.querySelector('.fieldName').value.trim();
+                const fieldIdEl = actionDiv.querySelector('.fieldId');
+                // A hand-typed ID is only trustworthy once it has resolved to a real field.
+                // Without this, saving during the lookup debounce — or after a failed
+                // lookup, with a hand-typed name — persists an ID and a name/datatype that
+                // describe different fields. dataset.resolvedId is set only by a successful
+                // lookup, an autocomplete pick, or loading an already-saved action.
+                if (action.fieldId && fieldIdEl.dataset.resolvedId !== action.fieldId) {
+                    throw new Error(`Observation Field ID ${action.fieldId} hasn't been confirmed yet. Wait for the lookup to finish, or choose the field by name.`);
+                }
                 const fieldValueElement = actionDiv.querySelector('.fieldValue');
                 action.fieldValue = fieldValueElement.dataset.taxonId || fieldValueElement.value.trim();
                 action.displayValue = fieldValueElement.value.trim();
@@ -581,10 +591,19 @@ function extractActionsFromForm() {
                 action.vote = actionDiv.querySelector('.qualityMetricVote').value;
                 break;
             case 'copyObservationField':
-                action.sourceFieldId = actionDiv.querySelector('.sourceFieldId').value.trim();
+                const srcIdEl = actionDiv.querySelector('.sourceFieldId');
+                const tgtIdEl = actionDiv.querySelector('.targetFieldId');
+                action.sourceFieldId = srcIdEl.value.trim();
                 action.sourceFieldName = actionDiv.querySelector('.sourceFieldName').value.trim();
-                action.targetFieldId = actionDiv.querySelector('.targetFieldId').value.trim();
+                action.targetFieldId = tgtIdEl.value.trim();
                 action.targetFieldName = actionDiv.querySelector('.targetFieldName').value.trim();
+                // Same unresolved-ID guard as the single-field action above.
+                if (action.sourceFieldId && srcIdEl.dataset.resolvedId !== action.sourceFieldId) {
+                    throw new Error(`Source Field ID ${action.sourceFieldId} hasn't been confirmed yet. Wait for the lookup to finish, or choose the field by name.`);
+                }
+                if (action.targetFieldId && tgtIdEl.dataset.resolvedId !== action.targetFieldId) {
+                    throw new Error(`Target Field ID ${action.targetFieldId} hasn't been confirmed yet. Wait for the lookup to finish, or choose the field by name.`);
+                }
                 break;
             case 'addToList':
                 action.listId = actionDiv.querySelector('.listSelect').value;
@@ -899,7 +918,11 @@ function populateActionInputs(actionDiv, action) {
             break;
         case 'observationField':
             actionDiv.querySelector('.fieldName').value = action.fieldName || '';
+            // An already-saved action's ID counts as confirmed; without this, merely
+            // re-opening an existing config and saving it would trip the unresolved-ID
+            // guard in extractActionData.
             actionDiv.querySelector('.fieldId').value = action.fieldId || '';
+            if (action.fieldId) actionDiv.querySelector('.fieldId').dataset.resolvedId = String(action.fieldId);
             actionDiv.querySelector('.fieldValue').value = action.fieldValue || '';
             const promptCheckbox = actionDiv.querySelector('.promptForValue');
             if (promptCheckbox) promptCheckbox.checked = action.promptForValue || false;
@@ -950,6 +973,9 @@ function populateActionInputs(actionDiv, action) {
             actionDiv.querySelector('.sourceFieldId').value = action.sourceFieldId || '';
             actionDiv.querySelector('.targetFieldName').value = action.targetFieldName || '';
             actionDiv.querySelector('.targetFieldId').value = action.targetFieldId || '';
+            // Saved IDs count as confirmed — see the note on the single-field case above.
+            if (action.sourceFieldId) actionDiv.querySelector('.sourceFieldId').dataset.resolvedId = String(action.sourceFieldId);
+            if (action.targetFieldId) actionDiv.querySelector('.targetFieldId').dataset.resolvedId = String(action.targetFieldId);
             break;
         case 'addToList':
             const listSelect = actionDiv.querySelector('.listSelect');
@@ -988,6 +1014,86 @@ function duplicateConfiguration(configId) {
 }
 
 let actionUidCounter = 0;
+// Wire a numeric "Field ID" input as a manual-entry escape hatch for observation
+// fields the name autocomplete can't surface (#60). Debounced, with a monotonic
+// token so a slow response for an earlier ID can't overwrite a later one. On a
+// hit the name input is back-filled so validation, undo records and action
+// summaries — all of which read fieldName — stay correct.
+//
+// onResolved is optional and runs for callers that need more than the name (the
+// single-field action also has to populate datatype/allowed_values).
+// Returns a `cancel()` the name-autocomplete path must call on selection. Setting
+// idInput.value programmatically fires no `input` event, so without it a lookup already
+// in flight for a previously typed ID resolves afterwards and overwrites the freshly
+// selected field's name and metadata while leaving the new ID in place.
+//
+// Resolution is tracked on `idInput.dataset.resolvedId`: set only when an ID has actually
+// been confirmed (by lookup or by autocomplete selection), cleared on every manual edit.
+// Validation checks it, so a typed-but-unresolved or failed ID cannot be saved even if the
+// user types something into the name box by hand.
+function wireFieldIdManualEntry(nameInput, idInput, statusEl, onResolved, onInvalidate) {
+    if (!idInput || !statusEl) return () => {};
+    let lookupToken = 0;
+
+    const cancel = () => {
+        clearTimeout(idInput._lookupTimeout);
+        lookupToken++;              // invalidate any in-flight response
+        statusEl.textContent = '';
+    };
+
+    idInput.addEventListener('input', () => {
+        const id = idInput.value.trim();
+
+        // Invalidate the previously resolved field on every edit, BEFORE the debounce:
+        // cancel any pending lookup, bump the token so an in-flight response is ignored,
+        // and blank the name and metadata. Otherwise saving during the 400ms debounce (or
+        // after a failed lookup) persists the newly typed ID next to the *old* field's
+        // name, datatype and allowed values — validation only checks that both the ID and
+        // the name are non-empty, so the mismatch would save silently.
+        clearTimeout(idInput._lookupTimeout);
+        const token = ++lookupToken;
+        if (nameInput) nameInput.value = '';
+        delete idInput.dataset.resolvedId;
+        if (typeof onInvalidate === 'function') onInvalidate();
+
+        if (!id) {
+            statusEl.textContent = '';
+            return;
+        }
+        statusEl.style.color = '#666';
+        statusEl.textContent = 'Looking up field...';
+        idInput._lookupTimeout = setTimeout(() => {
+            lookupObservationFieldById(id)
+                .then(field => {
+                    if (token !== lookupToken) return; // stale response
+                    if (nameInput) nameInput.value = field.name;
+                    idInput.dataset.resolvedId = String(field.id);
+                    if (typeof onResolved === 'function') onResolved(field);
+                    statusEl.style.color = 'green';
+                    statusEl.textContent = `Found: ${field.name}${field.datatype ? ` (${field.datatype})` : ''}`;
+                })
+                .catch(() => {
+                    if (token !== lookupToken) return;
+                    statusEl.style.color = '#c0392b';
+                    statusEl.textContent = `No observation field found with ID ${id}`;
+                });
+        }, 400);
+    });
+
+    // Editing the NAME after a field resolved also breaks the pairing: the ID would still
+    // match dataset.resolvedId while the name describes something else, and extraction only
+    // compares the ID. Clearing it here forces a re-selection (or a fresh ID lookup).
+    // Autocomplete selection is safe: it sets resolvedId in its own handler and then assigns
+    // nameInput.value programmatically, which fires no `input` event.
+    if (nameInput) {
+        nameInput.addEventListener('input', () => {
+            delete idInput.dataset.resolvedId;
+        });
+    }
+
+    return cancel;
+}
+
 function addActionToForm(action = null) {
     const actionDiv = document.createElement('div');
     actionDiv.className = 'action-item';
@@ -1031,7 +1137,8 @@ function addActionToForm(action = null) {
         </div>
         <div class="ofInputs">
             <input type="text" class="fieldName" placeholder="Observation Field Name">
-            <input type="number" class="fieldId" placeholder="Field ID" readonly>
+            <input type="number" class="fieldId" placeholder="Field ID (type to enter manually)">
+            <div class="fieldIdStatus" style="font-size: 12px; margin-top: 2px; min-height: 14px;"></div>
             <input type="hidden" class="fieldDatatype">
             <input type="hidden" class="fieldAllowedValues">
             <div class="fieldValueContainer">
@@ -1089,10 +1196,12 @@ function addActionToForm(action = null) {
         </div>
         <div class="copyObservationFieldInputs" style="display:none;">
             <input type="text" class="sourceFieldName" placeholder="Source Field Name">
-            <input type="number" class="sourceFieldId" placeholder="Source Field ID" readonly>
+            <input type="number" class="sourceFieldId" placeholder="Source Field ID (type to enter manually)">
+            <div class="sourceFieldIdStatus" style="font-size: 12px; margin-top: 2px; min-height: 14px;"></div>
             <input type="text" class="targetFieldName" placeholder="Target Field Name">
-            <input type="number" class="targetFieldId" placeholder="Target Field ID" readonly>
-        </div>        
+            <input type="number" class="targetFieldId" placeholder="Target Field ID (type to enter manually)">
+            <div class="targetFieldIdStatus" style="font-size: 12px; margin-top: 2px; min-height: 14px;"></div>
+        </div>
         <div class="addToListInputs" style="display:none;">
             <select class="listSelect">
                 <option value="">Select a List</option>
@@ -1191,8 +1300,14 @@ function addActionToForm(action = null) {
     const fieldValueContainer = actionDiv.querySelector('.fieldValueContainer');
     const fieldValueInput = fieldValueContainer.querySelector('.fieldValue');
     
-    setupAutocompleteDropdown(fieldNameInput, lookupObservationField, (result) => {
-        fieldIdInput.value = result.id;
+    const fieldIdStatus = actionDiv.querySelector('.fieldIdStatus');
+
+    // Shared by the name-autocomplete pick and the manual-ID path so both populate
+    // datatype/allowed_values identically — the value input is built from them.
+    // setId is false on the manual-ID path: the user is typing in that very input,
+    // and rewriting its value would jump their caret to the end.
+    function applyObservationField(result, setId = true) {
+        if (setId) fieldIdInput.value = result.id;
         const datatypeInput = actionDiv.querySelector('.fieldDatatype');
         const allowedValuesInput = actionDiv.querySelector('.fieldAllowedValues');
         if (datatypeInput) datatypeInput.value = result.datatype || '';
@@ -1201,6 +1316,34 @@ function addActionToForm(action = null) {
         if (result.datatype === 'taxon') {
             setupTaxonAutocompleteForInput(updatedFieldValueInput);
         }
+    }
+
+    // Late-bound: wireFieldIdManualEntry is called below but its cancel must be reachable
+    // from the autocomplete handler defined here.
+    let cancelFieldIdLookup = () => {};
+
+    setupAutocompleteDropdown(fieldNameInput, lookupObservationField, (result) => {
+        // Discard any manual-ID lookup still in flight; otherwise its late response
+        // overwrites this selection's name and metadata while keeping this ID.
+        cancelFieldIdLookup();
+        applyObservationField(result);
+        fieldIdInput.dataset.resolvedId = String(result.id);
+        if (fieldIdStatus) fieldIdStatus.textContent = '';
+    });
+
+    // Allow manual field ID entry as an escape hatch for fields the name
+    // autocomplete can't surface (#60) — e.g. field 108 "Date", which ranks ~30th
+    // for q=date. On a valid ID, auto-fill the name so validation and summaries
+    // stay correct.
+    cancelFieldIdLookup = wireFieldIdManualEntry(fieldNameInput, fieldIdInput, fieldIdStatus, (field) => {
+        applyObservationField(field, false);
+    }, () => {
+        // Until the typed ID resolves, the datatype/allowed-values belong to the previous
+        // field. Clear them so a save can't pair a new ID with the old field's metadata.
+        const datatypeInput = actionDiv.querySelector('.fieldDatatype');
+        const allowedValuesInput = actionDiv.querySelector('.fieldAllowedValues');
+        if (datatypeInput) datatypeInput.value = '';
+        if (allowedValuesInput) allowedValuesInput.value = '';
     });
 
     const taxonNameInput = actionDiv.querySelector('.taxonName');
@@ -1263,17 +1406,31 @@ function addActionToForm(action = null) {
     populateAnnotationFields(annotationField);
     annotationField.addEventListener('change', () => updateAnnotationValues(annotationField, annotationValue));
 
+    // Copy Observation Field: both ends get the same name-autocomplete and the same
+    // manual-ID escape hatch as the single-field action above (#60).
     const sourceFieldNameInput = actionDiv.querySelector('.sourceFieldName');
     const sourceFieldIdInput = actionDiv.querySelector('.sourceFieldId');
+    const sourceFieldIdStatus = actionDiv.querySelector('.sourceFieldIdStatus');
+    let cancelSourceFieldIdLookup = () => {};
     setupAutocompleteDropdown(sourceFieldNameInput, lookupObservationField, (result) => {
+        cancelSourceFieldIdLookup();
         sourceFieldIdInput.value = result.id;
+        sourceFieldIdInput.dataset.resolvedId = String(result.id);
+        if (sourceFieldIdStatus) sourceFieldIdStatus.textContent = '';
     });
+    cancelSourceFieldIdLookup = wireFieldIdManualEntry(sourceFieldNameInput, sourceFieldIdInput, sourceFieldIdStatus);
 
     const targetFieldNameInput = actionDiv.querySelector('.targetFieldName');
     const targetFieldIdInput = actionDiv.querySelector('.targetFieldId');
+    const targetFieldIdStatus = actionDiv.querySelector('.targetFieldIdStatus');
+    let cancelTargetFieldIdLookup = () => {};
     setupAutocompleteDropdown(targetFieldNameInput, lookupObservationField, (result) => {
+        cancelTargetFieldIdLookup();
         targetFieldIdInput.value = result.id;
+        targetFieldIdInput.dataset.resolvedId = String(result.id);
+        if (targetFieldIdStatus) targetFieldIdStatus.textContent = '';
     });
+    cancelTargetFieldIdLookup = wireFieldIdManualEntry(targetFieldNameInput, targetFieldIdInput, targetFieldIdStatus);
 
     const removeButton = actionDiv.querySelector('.removeActionButton');
     removeButton.addEventListener('click', () => actionDiv.remove());
@@ -1636,23 +1793,6 @@ async function toggleDisableConfiguration(configId, checkbox) { // Make async
     }
 }
 
-function updateConfigurationDisplay(config) {
-    const configDiv = document.querySelector(`.config-item[data-id="${config.id}"]`);
-    if (configDiv) {
-        configDiv.classList.toggle('disabled-config', config.configurationDisabled);
-        
-        // Update checkboxes without triggering change events
-        const hideCheckbox = configDiv.querySelector('.hide-button-checkbox');
-        if (hideCheckbox) {
-            hideCheckbox.checked = config.buttonHidden;
-        }
-        
-        const disableCheckbox = configDiv.querySelector('.disable-config-checkbox');
-        if (disableCheckbox) {
-            disableCheckbox.checked = config.configurationDisabled;
-        }
-    }
-}
 function formatShortcut(shortcut) {
     if (!shortcut || (!shortcut.ctrlKey && !shortcut.shiftKey && !shortcut.altKey && !shortcut.key)) {
         return 'None';
@@ -1804,23 +1944,6 @@ function handleStorageChangeForOptionsPage(changes, areaName) { // Was handleSto
     }
 }
 
-function showUndoRecordsModal() {
-    getUndoRecords(function(undoRecords) {
-        debugLog('Retrieved undo records:', undoRecords);
-        if (undoRecords.length === 0) {
-            alert('No undo records available.');
-            return;
-        }
-
-        const modal = createUndoRecordsModal(undoRecords, function(record) {
-            // For the options page, we might want to just mark the record as undone
-            // without actually performing the undo action
-            markRecordAsUndone(record.id);
-        });
-
-        document.body.appendChild(modal);
-    });
-}
 
 function exportConfigurations() {
     browserAPI.storage.local.get(['configurationSets', 'optionsPageActiveSetName', 'customLists'], function(data) {
@@ -2303,21 +2426,6 @@ async function saveConfigurationSets(refreshDisplay = true) {
     }
 }
 
-function mergeLists(importedLists) {
-    browserAPI.storage.local.get('customLists', async function(data) {
-        let existingLists = data.customLists || [];
-        
-        try {
-            const importResults = await createListImportModal(importedLists, existingLists);
-            processListImportChoices(importResults, existingLists);
-        } catch (error) {
-            if (error.message !== 'Import cancelled') {
-                console.error('Error during list import:', error);
-                alert('Error importing lists');
-            }
-        }
-    });
-}
 
 async function processListImportChoices(results, existingLists) {
     let listsToAdd = [];
@@ -2613,20 +2721,6 @@ function collapseSelectedConfigurations() {
     });
 }
 
-function expandConfigurations(configIds) {
-    configIds.forEach(id => {
-        const configDiv = document.querySelector(`.config-item[data-id="${id}"]`);
-        if (configDiv) {
-            const detailsDiv = configDiv.querySelector('.config-details');
-            const toggleSpan = configDiv.querySelector('.toggle-details');
-            if (detailsDiv && toggleSpan) {
-                detailsDiv.style.display = 'block';
-                toggleSpan.innerHTML = '&#9650;';
-            }
-        }
-    });
-    updateToggleAllButton();
-}
 
 function createImportModal(importedSets) {
     const modal = document.createElement('div');
@@ -2955,17 +3049,29 @@ function saveAutoFollowSettings() {
 }
 
 function loadBulkActionSettings() {
-    browserAPI.storage.local.get(['autoRefreshAfterBulk'], function(data) {
+    browserAPI.storage.local.get(['autoRefreshAfterBulk', 'bulkUiHidden'], function(data) {
         document.getElementById('autoRefreshAfterBulk').checked = !!data.autoRefreshAfterBulk;
+        document.getElementById('hideBulkUi').checked = !!data.bulkUiHidden;
     });
 }
 
 function saveBulkActionSettings() {
     const settings = {
-        autoRefreshAfterBulk: document.getElementById('autoRefreshAfterBulk').checked
+        autoRefreshAfterBulk: document.getElementById('autoRefreshAfterBulk').checked,
+        // Shares the bulkUiHidden key with the Shift+V shortcut, so the two stay in
+        // sync in both directions via storage.onChanged (#61).
+        bulkUiHidden: document.getElementById('hideBulkUi').checked
     };
     browserAPI.storage.local.set(settings);
 }
+
+// Keep the checkbox current if the page was toggled with Shift+V while the
+// options tab was open.
+browserAPI.storage.onChanged.addListener(function(changes, namespace) {
+    if (namespace !== 'local' || !changes.bulkUiHidden) return;
+    const box = document.getElementById('hideBulkUi');
+    if (box) box.checked = !!changes.bulkUiHidden.newValue;
+});
 
 function loadButtonLayoutSettings() {
     browserAPI.storage.local.get(['buttonMinWidth', 'verticalButtonLayout', 'buttonContainerMaxWidth'], function(data) {

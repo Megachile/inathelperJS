@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.3.8] - 2026-07-26
+
+### Added
+- **Annotation disagreements are now visible** (#59, requested by @rcavasin) — when a button's annotation action can't be applied because a conflicting annotation is already there and isn't yours to replace, iNaturalist only records your click as a *downvote* of the existing annotation; the annotation you configured is never added. That used to flash the button green like any success, which is invisible if you're annotating by keyboard shortcut with the Info tab open. The button now flashes **amber** and a warning names both values ("wanted Larva, downvoted existing Adult"). Bulk actions get a matching "Recorded as a downvote only" section in the results modal, listing each affected observation, and those results no longer inflate the green success count. Deliberate downvotes (the "Downvote (disagree with)" checkbox) are unaffected and still report as plain successes.
+- **Observation fields can be selected by ID** (#60, reported by @ariellopezpics) — the Field ID box is no longer read-only. Type an ID and the field name fills in automatically, as an escape hatch for fields the name search can't reach. Also wired into both ends of the Copy Observation Field action.
+- **The bulk action controls can be moved and hidden** (#61, reported by @bradbarnd) — hover the bulk cluster for a `☰` grip, drag it anywhere, and it snaps to the nearest corner and remembers where you put it. Shift+V (or the new "Hide the bulk action controls" checkbox under Bulk Action Settings) now hides the whole cluster and the preference persists across reloads.
+
+### Fixed
+- **Observation field search missed exact matches** (#60) — searching `date` never offered the field actually called "Date" (ID 108), because the API ranks by usage and only the top 10 results were requested, putting the exact match around 30th. The search now fetches a wider set and promotes exact and prefix matches to the top.
+- **The bulk action controls covered the iNaturalist logo** (#61) — they were anchored to the corner opposite the main buttons, so the default bottom-right button position pushed them to the top left, over the logo used to navigate away from the Identify page. They now have their own position, defaulting to the bottom left, and Alt+N rotates both clusters together while keeping their relative arrangement.
+- **Undoing a bulk annotation did nothing** — the undo record never captured the identifier of the annotation it created, so every annotation undo failed with "Annotation UUID not found" and silently changed nothing.
+- **Undoing a replaced annotation discarded the original value** — setting an annotation that already had a different value replaces it, so undo deleted the new annotation and left the observation with none at all instead of restoring what was there before. The previous value is now recorded and restored.
+- **Undoing could remove a vote you had cast yourself** — where the action resulted in a vote rather than a new annotation, undo withdrew that vote unconditionally, including when you had already voted before running the bulk action. Undo now restores the vote's original direction, only withdraws votes the action itself created, and leaves votes alone if it can't confirm which is which.
+- **Custom button order could be saved with invalid entries** — `saveButtonOrder` existed twice in `content.js` and the surviving copy had lost the earlier one's safeguards, so it searched the whole page instead of the button container and wrote `undefined` into the saved order for any button lacking an identifier.
+- **Manually entered field IDs can no longer be saved unconfirmed** — a typed ID that hasn't resolved (or that failed to resolve) is now rejected on save, instead of being stored alongside a stale field name and datatype from the previously selected field. Editing either the ID or the name invalidates the pairing until it resolves again, and choosing a field by name cancels any ID lookup still in flight.
+
+### Changed
+- Removed 49 unreferenced functions (~1,100 lines) left behind by superseded implementations, including a complete duplicate of the bulk results reporting path that nothing called — a fix applied there would have silently rendered nowhere. Also de-duplicated `saveButtonOrder`, `getQualityMetricName` and `showUndoRecordsModal`, and dropped an unused parameter from `createUndoRecordsModal`. A new test fails the build if unreferenced functions or duplicate declarations reappear.
+- Softened the bulk panel's white background and hard black border, which was invisible over the page header at the old top-left position but obtrusive against the observation grid at the new one.
+
 ## [3.3.6] - 2026-06-30
 
 ### Fixed

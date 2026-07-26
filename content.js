@@ -66,11 +66,6 @@ let lastClickedObservationElementForShiftSelect = null;
 
 const pendingOperations = new Map();
 
-function createOperationKey(observationId, action) {
-    // Create a unique key based on observation ID and action details
-    const actionKey = JSON.stringify(action);
-    return `${observationId}-${actionKey}`;
-}
 
 async function getCurrentUserId() {
     if (currentUserId) return currentUserId;
@@ -202,29 +197,34 @@ function createShortcutList() {
     });
 }
 
+// Hiding the bulk UI (#61, requested by @bradbarnd). This used to hide only the
+// enable button and the bulk panel, leaving the CSV loader — and now the drag
+// grip — still on the page, and it reset on every reload. It now hides the whole
+// wrapper and persists, so users who never touch bulk mode can turn it off for
+// good via Shift+V or the options-page checkbox.
 let bulkActionManuallyHidden = false;
 
-function toggleBulkActionVisibility() {
-    const bulkButtonContainer = document.getElementById('bulk-action-container');
-    const enableBulkModeButton = document.getElementById('enable-bulk-mode-button');
-    
-    if (bulkButtonContainer && enableBulkModeButton) {
-        if (bulkButtonContainer.style.display !== 'none' || enableBulkModeButton.style.display !== 'none') {
-            bulkButtonContainer.style.display = 'none';
-            enableBulkModeButton.style.display = 'none';
-            bulkActionManuallyHidden = true;
-        } else {
-            bulkActionManuallyHidden = false;
-            if (bulkActionModeEnabled) {
-                bulkButtonContainer.style.display = 'block';
-                enableBulkModeButton.style.display = 'none';
-            } else {
-                bulkButtonContainer.style.display = 'none';
-                enableBulkModeButton.style.display = 'block';
-            }
-        }
-    }
+function applyBulkUiVisibility() {
+    const wrapper = document.getElementById('bulk-ui-wrapper');
+    if (wrapper) wrapper.style.display = bulkActionManuallyHidden ? 'none' : '';
 }
+
+function setBulkUiHidden(hidden, persist = true) {
+    bulkActionManuallyHidden = !!hidden;
+    applyBulkUiVisibility();
+    if (persist) browserAPI.storage.local.set({ bulkUiHidden: bulkActionManuallyHidden });
+}
+
+function toggleBulkActionVisibility() {
+    setBulkUiHidden(!bulkActionManuallyHidden);
+}
+
+browserAPI.storage.local.get('bulkUiHidden', function(data) {
+    if (data.bulkUiHidden) {
+        bulkActionManuallyHidden = true;
+        applyBulkUiVisibility();
+    }
+});
 
 // On macOS, holding Option (Alt) turns the keystroke into a special character,
 // so event.key for Option+N is the dead-key "˜"/"Dead" rather than "n". That made
@@ -373,6 +373,10 @@ document.addEventListener('keydown', handleAllShortcuts);
 const positions = ['top-left', 'top-right', 'bottom-right', 'bottom-left'];
 let currentPositionIndex = 0;
 
+// The bulk UI's corner is tracked independently of the main cluster's (#61) and
+// is set by dragging the wrapper's grip, not by Alt+N.
+let bulkPosition = 'bottom-left';
+
 function toggleButtonVisibility() {
     const container = document.getElementById('custom-extension-container');
     if (!container || !container.parentElement) return;
@@ -386,10 +390,24 @@ function cycleButtonPosition() {
     if (typeof resetFreeButtonLayout === 'function') resetFreeButtonLayout();
     currentPositionIndex = (currentPositionIndex + 1) % positions.length;
     buttonPosition = positions[currentPositionIndex];
+
+    // `positions` is already in clockwise order, so advancing the bulk UI by the
+    // same single step rotates both clusters together and preserves whatever
+    // relative arrangement the user has dragged them into (#61).
+    const bulkIndex = positions.indexOf(bulkPosition);
+    bulkPosition = positions[((bulkIndex === -1 ? 0 : bulkIndex) + 1) % positions.length];
+
     updatePositions();
     updateBulkButtonPosition();
-    browserAPI.storage.local.set({buttonPosition: buttonPosition});
+    browserAPI.storage.local.set({ buttonPosition: buttonPosition, bulkPosition: bulkPosition });
 }
+
+browserAPI.storage.local.get('bulkPosition', function(data) {
+    if (data.bulkPosition && positions.includes(data.bulkPosition)) {
+        bulkPosition = data.bulkPosition;
+        updateBulkButtonPosition();
+    }
+});
 
 browserAPI.storage.local.get('buttonPosition', function(data) {
     if (data.buttonPosition) {
@@ -460,34 +478,6 @@ function updatePositions() {
     // including re-snapping the sort/edit/set controls to the nearest side/edge.
     if (typeof freeButtonPosition !== 'undefined' && freeButtonPosition) {
         applyFreeButtonPosition();
-    }
-    updateBulkButtonPosition();
-}
-
-function updateBulkButtonPosition() {
-    debugLog('Updating bulk button position');
-    const bulkButtonContainer = document.getElementById('bulk-action-container');
-    if (!bulkButtonContainer) return;
-
-    bulkButtonContainer.style.top = bulkButtonContainer.style.left = bulkButtonContainer.style.bottom = bulkButtonContainer.style.right = 'auto';
-    
-    switch (buttonPosition) {
-        case 'top-left':
-            bulkButtonContainer.style.top = '10px';
-            bulkButtonContainer.style.right = '10px';
-            break;
-        case 'top-right':
-            bulkButtonContainer.style.top = '10px';
-            bulkButtonContainer.style.left = '10px';
-            break;
-        case 'bottom-left':
-            bulkButtonContainer.style.bottom = '10px';
-            bulkButtonContainer.style.right = '10px';
-            break;
-        case 'bottom-right':
-            bulkButtonContainer.style.bottom = '10px';
-            bulkButtonContainer.style.left = '10px';
-            break;
     }
 }
 
@@ -570,25 +560,6 @@ function extractObservationId() {
     }
 }
 
-function extractObservationIdFromUrl() {
-    const url = window.location.href;
-    debugLog('Current URL:', url);
-    const urlPattern = /https:\/\/www\.inaturalist\.org\/observations\/(\d+)/;
-    const match = url.match(urlPattern);
-
-    if (match && match[1]) {
-        debugLog('Extracted observation ID from URL:', match[1]);
-        return match[1];
-    }
-
-    if (url.includes('/observations/identify')) {
-        debugLog('On identify page, no observation ID in URL');
-        return null;
-    }
-
-    debugLog('Unable to extract observation ID from URL:', url);
-    return null;
-}
 
 function setupObservationTabsObserver() {
     debugLog('Setting up observation tabs observer');
@@ -619,19 +590,6 @@ function setupObservationTabsObserver() {
     debugLog('Observer set up successfully');
 }
 
-function logModalStructure() {
-    const modal = document.querySelector('.ObservationModal.FullScreenModal');
-    if (modal) {
-        const header = modal.querySelector('.obs-modal-header');
-        if (header) {
-            debugLog('Header structure:', header.innerHTML);
-        } else {
-            debugLog('Header not found in modal');
-        }
-    } else {
-        debugLog('Modal not found');
-    }
-}
 
 function startObservationCheck() {
     if (checkInterval) clearInterval(checkInterval);
@@ -644,7 +602,6 @@ function stopObservationCheck() {
         checkInterval = null;
     }
 }
-
 
 
 observer.observe(document.body, { childList: true, subtree: true });
@@ -898,7 +855,6 @@ browserAPI.storage.local.get(['buttonFreePosition', 'buttonFreeSize'], function(
 // -----------------------------------------------------------------------------
 
 
-
 async function addObservationField(observationId, fieldId, value, button = null) {
         if (!observationId) {
         debugLog('No observation ID provided. Please select an observation first.');
@@ -1082,7 +1038,22 @@ async function voteOnExistingAnnotation(observationId, attributeId, valueId, jwt
                         body: JSON.stringify({ vote: false })
                     });
                     if (voteResponse.ok) {
-                        return { success: true, uuid: conflictingAnnotation.uuid, action: 'disagreed' };
+                        // Carry the attribute/value ids back so the caller can name the
+                        // annotation we ended up downvoting (#59). The configured
+                        // annotation was NOT added — this is only a downvote.
+                        // `downvotedOnly` rather than `action: 'disagreed'` is the flag
+                        // callers test: the bulk summary rebuilds results as
+                        // `{ ...actionResult, action: action.type }`, which clobbers
+                        // `action`. A distinct key survives that spread.
+                        return {
+                            success: true,
+                            uuid: conflictingAnnotation.uuid,
+                            action: 'disagreed',
+                            downvotedOnly: true,
+                            disagreedAttributeId: parseInt(attributeId),
+                            disagreedValueId: conflictingAnnotation.controlled_value_id,
+                            intendedValueId: parseInt(valueId)
+                        };
                     } else {
                         return { success: false, error: 'Failed to vote disagree on conflicting annotation' };
                     }
@@ -1178,48 +1149,6 @@ async function disagreeWithAnnotation(observationId, attributeId, valueId) {
     }
 }
 
-async function addObservationToProject(observationId, projectId) {
-    if (!observationId) {
-        debugLog('No observation ID provided. Please select an observation first.');
-        return { success: false, error: 'No observation ID provided' };
-    }
-
-    const jwt = await getJWT();
-    if (!jwt) {
-        console.error('No JWT found');
-        return { success: false, error: 'No JWT found' };
-    }
-
-    const url = `${API_URL}/project_observations`;
-    const data = {
-        project_observation: {
-            observation_id: observationId,
-            project_id: projectId
-        }
-    };
-
-    try {
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${jwt}`
-            },
-            body: JSON.stringify(data)
-        });
-        const responseData = await response.json();
-        if (responseData.errors) {
-            debugLog('Observation not added to project:', responseData.errors);
-            return { success: false, message: 'Observation not added to project', data: responseData };
-        } else {
-            debugLog('Observation added to project successfully:', responseData);
-            return { success: true, data: responseData };
-        }
-    } catch (error) {
-        console.error('Error adding observation to project:', error);
-        return { success: false, error: safeErrorString(error) };
-    }
-}
 
 async function addComment(observationId, commentBody) {
     if (!observationId) {
@@ -1485,112 +1414,6 @@ async function handleQualityMetricAPI(observationId, metric, vote) {
     }
 }
 
-async function handleQualityMetric(observationId, metricValue, vote) {
-    const metricLabel = getMetricLabel(metricValue);
-    debugLog(`Handling quality metric: ${metricLabel}, vote: ${vote}`);
-    
-    const metricsContainer = document.querySelector('.QualityMetrics');
-    if (!metricsContainer) {
-        console.error('QualityMetrics container not found');
-        return { success: false, error: 'QualityMetrics container not found' };
-    }
-
-    const rows = metricsContainer.querySelectorAll('tr');
-    const targetRow = Array.from(rows).find(row => {
-        const titleCell = row.querySelector('td.metric_title');
-        return titleCell && titleCell.textContent.trim() === metricLabel;
-    });
-
-    if (!targetRow) {
-        console.error(`Metric "${metricLabel}" not found`);
-        return { success: false, error: 'Metric not found' };
-    }
-
-    const agreeCell = targetRow.querySelector('td.agree');
-    const disagreeCell = targetRow.querySelector('td.disagree');
-    if (!agreeCell || !disagreeCell) {
-        console.error(`Metric cells for "${metricLabel}" not found`);
-        return { success: false, error: 'Metric cells not found' };
-    }
-    const agreeButton = agreeCell.querySelector('button');
-    const disagreeButton = disagreeCell.querySelector('button');
-
-    if (!agreeButton || !disagreeButton) {
-        console.error(`Buttons for "${metricLabel}" not found`);
-        return { success: false, error: 'Buttons not found' };
-    }
-
-    const currentState = getCurrentState(agreeCell, disagreeCell);
-    debugLog(`Current state for ${metricLabel}: ${currentState}`);
-
-    let buttonToClick;
-    switch (vote) {
-        case 'agree':
-            buttonToClick = currentState !== 'agree' ? agreeButton : null;
-            break;
-        case 'disagree':
-            buttonToClick = currentState !== 'disagree' ? disagreeButton : null;
-            break;
-        case 'remove':
-            buttonToClick = currentState === 'agree' ? agreeButton : 
-                            currentState === 'disagree' ? disagreeButton : null;
-            break;
-    }
-
-    if (buttonToClick) {
-        debugLog(`Clicking ${buttonToClick === agreeButton ? 'agree' : 'disagree'} button for "${metricLabel}"`);
-        buttonToClick.click();
-        await waitForStateChange(targetRow, currentState);
-    } else {
-        debugLog(`No action needed for ${metricLabel} - already in desired state`);
-    }
-
-    debugLog(`${metricLabel} ${vote} action completed`);
-    return { success: true };
-}
-
-function getCurrentState(agreeCell, disagreeCell) {
-    const agreeButton = agreeCell ? agreeCell.querySelector('button') : null;
-    const disagreeButton = disagreeCell ? disagreeCell.querySelector('button') : null;
-
-    if (agreeButton && agreeButton.querySelector('.fa-thumbs-up')) {
-        return 'agree';
-    } else if (disagreeButton && disagreeButton.querySelector('.fa-thumbs-down')) {
-        return 'disagree';
-    } else {
-        return 'none';
-    }
-}
-
-function waitForStateChange(row, originalState) {
-    return new Promise((resolve) => {
-        const observer = new MutationObserver(() => {
-            const newState = getCurrentState(row.querySelector('td.agree'), row.querySelector('td.disagree'));
-            if (newState !== originalState) {
-                observer.disconnect();
-                resolve();
-            }
-        });
-
-        observer.observe(row, { 
-            subtree: true, 
-            childList: true,
-            attributes: true,
-            attributeFilter: ['class']
-        });
-
-        // Timeout after 5 seconds in case the state doesn't change
-        setTimeout(() => {
-            observer.disconnect();
-            resolve();
-        }, 50);
-    });
-}
-
-function getMetricLabel(value) {
-    const metric = qualityMetrics.find(m => m.value === value);
-    return metric ? metric.label : value;
-}
 
 async function copyObservationField(observationId, sourceFieldId, targetFieldId) {
     try {
@@ -1627,11 +1450,18 @@ async function copyObservationField(observationId, sourceFieldId, targetFieldId)
     }
 }
 
-function animateButtonResult(button, success) {
-    button.classList.add(success ? 'button-success' : 'button-failure');
+// Three outcome states. Accepts a legacy boolean or an explicit
+// 'success' | 'warning' | 'failure'. Yellow ('warning') means the API call
+// succeeded but not in the way the button was configured to act — currently
+// only the "we could only downvote the existing annotation" case (#59).
+function animateButtonResult(button, outcome) {
+    const cls = (outcome === true || outcome === 'success') ? 'button-success'
+              : (outcome === 'warning') ? 'button-warning'
+              : 'button-failure';
+    button.classList.add(cls);
     setTimeout(() => {
-        button.classList.remove('button-success', 'button-failure');
-    }, 1200); 
+        button.classList.remove('button-success', 'button-warning', 'button-failure');
+    }, 1200);
 }
 const style = document.createElement('style');
 style.textContent += `
@@ -1688,6 +1518,11 @@ style.textContent += `
       50% { box-shadow: 0 0 0 20px rgba(255, 0, 0, 0.3); transform: scale(1.1); }
       100% { box-shadow: 0 0 0 0 rgba(255, 0, 0, 0); transform: scale(1); }
   }
+  @keyframes pulseYellow {
+      0% { box-shadow: 0 0 0 0 rgba(255, 193, 7, 0.7); transform: scale(1); }
+      50% { box-shadow: 0 0 0 20px rgba(255, 193, 7, 0.3); transform: scale(1.1); }
+      100% { box-shadow: 0 0 0 0 rgba(255, 193, 7, 0); transform: scale(1); }
+  }
   .button-success {
       animation: pulseGreen 1.5s ease-out;
       background-color: rgba(0, 255, 0, 0.7) !important;
@@ -1695,6 +1530,42 @@ style.textContent += `
   .button-failure {
       animation: pulseRed 1.5s ease-out;
       background-color: rgba(255, 0, 0, 0.7) !important;
+  }
+  /* Amber rather than pure yellow so the text stays legible against it. */
+  .button-warning {
+      animation: pulseYellow 1.5s ease-out;
+      background-color: rgba(255, 193, 7, 0.85) !important;
+  }
+  /* The wrapper is a positioning shell only — it must never paint. Stated
+     explicitly so no inherited iNat rule can give it a background or border
+     (#61: the panels below carry their own chrome, the shell adds none). */
+  #bulk-ui-wrapper {
+      background: transparent;
+      border: none;
+      box-shadow: none;
+      padding: 0;
+  }
+  /* Bulk UI drag grip (#61): faint at rest so it doesn't add visual noise to the
+     identify page, darker on hover. Scale (not font-size) avoids reflow. */
+  #bulk-drag-handle {
+      display: flex;
+      justify-content: flex-end;
+      padding: 2px 4px;
+      user-select: none;
+      line-height: 1;
+  }
+  #bulk-move-grip {
+      cursor: move;
+      color: #bbb;
+      font-size: 14px;
+      transition: color 0.15s ease, transform 0.15s ease;
+  }
+  #bulk-ui-wrapper:hover #bulk-move-grip {
+      color: #555;
+      transform: scale(1.2);
+  }
+  #bulk-ui-wrapper.dragging {
+      opacity: 0.85;
   }
   #custom-extension-container {
       display: flex;
@@ -1974,18 +1845,6 @@ window.addEventListener('load', () => {
     createDynamicButtons();
 });
 
-
-function createRefreshIndicator() {
-    const indicator = document.createElement('div');
-    indicator.id = 'refresh-indicator';
-    indicator.style.display = 'inline-block';
-    indicator.style.marginLeft = '10px';
-    indicator.style.padding = '5px';
-    indicator.style.borderRadius = '5px';
-    indicator.style.transition = 'background-color 0.3s';
-    updateRefreshIndicator(indicator);
-    return indicator;
-}
 
 function updateRefreshIndicator(indicator = document.getElementById('refresh-indicator')) {
     if (indicator) {
@@ -2464,8 +2323,6 @@ async function performSingleAction(action, observationId) {
 }
 
 
-
-
 function displayWarning(message) {
     const warningDiv = document.createElement('div');
     warningDiv.style.cssText = `
@@ -2478,6 +2335,9 @@ function displayWarning(message) {
         border-radius: 5px;
         box-shadow: 0 2px 5px rgba(0,0,0,0.2);
         z-index: 10000;
+        max-width: 420px;
+        white-space: pre-wrap;
+        overflow-wrap: break-word;
     `;
     warningDiv.textContent = message;
 
@@ -2671,81 +2531,6 @@ function logLinkDetails(links) {
             className: link.className,
             rect: link.getBoundingClientRect()
         });
-    });
-}
-
-async function updateObservationPage(observationId) {
-    try {
-        const favContainer = document.querySelector('.Faves');
-        if (!favContainer) {
-            debugLog('Fav button container not found');
-            return false;
-        }
-
-        const linky = favContainer.querySelector('.linky');
-        const favButton = favContainer.querySelector('.action');
-        if (!linky || !favButton) {
-            debugLog('Fav button elements not found');
-            return false;
-        }
-        const linkText = linky.textContent;
-        const originalState = linkText === "You faved this!" ? 'faved' : 'unfaved';
-        debugLog(`Original fav state: ${originalState}`);
-
-        // Click the fav button
-        favButton.click();
-
-        // Wait for the state to change
-        await waitForFavStateChange(originalState);
-
-        // Click again to revert to the original state
-        await new Promise(resolve => setTimeout(resolve, 500)); // Short delay
-        favButton.click();
-
-        // Wait for the state to revert
-        await waitForFavStateChange(originalState === 'faved' ? 'unfaved' : 'faved');
-
-        debugLog('Fav button clicked twice, returned to original state');
-        debugLog('Triggered site refresh mechanism');
-        return true;
-    } catch (error) {
-        console.error('Error triggering site refresh:', error);
-        return false;
-    }
-}
-
-function waitForFavStateChange(originalState) {
-    return new Promise((resolve, reject) => {
-        const maxWaitTime = 10000; // 10 seconds
-        const checkInterval = 100; // 0.1 seconds
-        let elapsedTime = 0;
-
-        const checkState = () => {
-            const favContainer = document.querySelector('.Faves');
-            const linky = favContainer ? favContainer.querySelector('.linky') : null;
-            if (!favContainer || !linky) {
-                elapsedTime += checkInterval;
-                if (elapsedTime >= maxWaitTime) {
-                    reject(new Error('Fav container disappeared during state check'));
-                } else {
-                    setTimeout(checkState, checkInterval);
-                }
-                return;
-            }
-            const linkText = linky.textContent;
-            const currentState = linkText === "You faved this!" ? 'faved' : 'unfaved';
-
-            if (currentState !== originalState) {
-                resolve();
-            } else if (elapsedTime >= maxWaitTime) {
-                reject(new Error('Timeout waiting for fav state change'));
-            } else {
-                elapsedTime += checkInterval;
-                setTimeout(checkState, checkInterval);
-            }
-        };
-
-        checkState();
     });
 }
 
@@ -3077,9 +2862,32 @@ function createButton(config) {
         performActions(currentButtonConfig.actions) 
             .then((resultsArray) => { 
                 let allSuccessfulInBatch = true;
+                let sawDisagreement = false;
                 let warningsToShow = [];
 
                 resultsArray.forEach(result => {
+                    // Succeeded, but only as a downvote of a conflicting annotation —
+                    // the configured annotation was never added (#59). Flag it so the
+                    // button flashes amber instead of green; users adding annotations by
+                    // keyboard shortcut can't see the annotation tab to notice otherwise.
+                    if (result.success && result.downvotedOnly) {
+                        sawDisagreement = true;
+                        // controlledTerms is a hardcoded subset, so an annotation iNat
+                        // knows but we don't would render as "Unknown". Fall back to the
+                        // raw id rather than printing that twice in one sentence.
+                        const nameOr = (valueId) => {
+                            const n = getAnnotationValueName(result.disagreedAttributeId, valueId);
+                            return n === 'Unknown' ? `value ${valueId}` : n;
+                        };
+                        const attrName = getAnnotationFieldName(result.disagreedAttributeId);
+                        const existingName = nameOr(result.disagreedValueId);
+                        const intendedName = nameOr(result.intendedValueId);
+                        warningsToShow.push(
+                            `${attrName}: could not add "${intendedName}" because "${existingName}" is already there ` +
+                            `and isn't yours to replace. Your click was recorded as a downvote of "${existingName}" only.`
+                        );
+                    }
+
                     if (!result.success) {
                         allSuccessfulInBatch = false;
                         // The results modal at the end of the bulk flow surfaces all
@@ -3127,7 +2935,9 @@ function createButton(config) {
                     }
                 });
 
-                animateButtonResult(this, allSuccessfulInBatch);
+                animateButtonResult(this, !allSuccessfulInBatch ? 'failure'
+                                        : sawDisagreement ? 'warning'
+                                        : 'success');
 
                 if (warningsToShow.length > 0) {
                     displayWarning(warningsToShow.join('\n')); 
@@ -3313,74 +3123,6 @@ function initializeDragAndDrop() {
     container.addEventListener('mousedown', onMouseDown);
 }
 
-function saveButtonOrder() {
-    const container = document.getElementById('custom-extension-container');
-    if (!container) return;
-
-    const buttons = container.querySelectorAll('.button-ph');
-    // Ensure unique IDs in the order
-    const uniqueOrderedIds = [];
-    const seenIds = new Set();
-    Array.from(buttons).forEach(button => {
-        const buttonId = button.dataset.buttonId;
-        if (buttonId && !seenIds.has(buttonId)) {
-            uniqueOrderedIds.push(buttonId);
-            seenIds.add(buttonId);
-        } else if (buttonId && seenIds.has(buttonId)) {
-            console.warn("Duplicate buttonId found in DOM during saveButtonOrder:", buttonId, "This should not happen. Removing duplicate.");
-            button.remove(); // Attempt to remove the duplicate from DOM to prevent future issues
-        }
-    });
-    
-    const order = uniqueOrderedIds; // Use the filtered unique list
-
-    debugLog("Saving button order:", order); // Debug
-    
-    browserAPI.storage.local.get('configurationSets', function(data) {
-        const sets = data.configurationSets || [];
-        const setIndex = sets.findIndex(set => set.name === currentSetName);
-        
-        if (setIndex !== -1) {
-            sets[setIndex].customOrder = order; 
-            sets[setIndex].sortMethod = 'custom'; // Explicitly set sort method to custom
-            
-            browserAPI.storage.local.set({ configurationSets: sets }, function() {
-                if (browserAPI.runtime.lastError) {
-                    console.error("Error saving button order:", browserAPI.runtime.lastError);
-                } else {
-                    debugLog('Custom button order saved for set:', currentSetName, order);
-                    if (currentSet) { // Update in-memory currentSet
-                        currentSet.customOrder = order;
-                        currentSet.sortMethod = 'custom';
-                    }
-                    // Update sort button text on the page
-                    const sortButton = document.getElementById('sort-button');
-                    const sortButtonTextSpan = sortButton ? sortButton.querySelector('span') : null;
-                    if (sortButtonTextSpan) {
-                        sortButtonTextSpan.textContent = getSortButtonText('custom');
-                    }
-                     // Re-add the 'Return to Custom' option if it's not there and custom order exists
-                     const sortDropdown = document.getElementById('sort-dropdown');
-                     if (sortDropdown && !sortDropdown.querySelector('#sort-custom') && order.length > 0) {
-                         const customOption = document.createElement('button');
-                         customOption.id = 'sort-custom';
-                         customOption.className = 'sort-option';
-                         customOption.textContent = 'Return to Custom';
-                         customOption.onclick = () => sortButtons('custom');
-                         
-                         const divider = document.createElement('div');
-                         divider.className = 'sort-divider';
-
-                         sortDropdown.insertBefore(divider, sortDropdown.firstChild);
-                         sortDropdown.insertBefore(customOption, sortDropdown.firstChild);
-                     }
-                }
-            });
-        } else {
-            console.error("Could not find current set to save button order:", currentSetName);
-        }
-    });
-}
 
 function disableDragAndDrop() {
     const container = document.getElementById('custom-extension-container');
@@ -3411,64 +3153,54 @@ function disableDragAndDrop() {
     }
 }
 
-function showClickFeedback(button) {
-    const feedback = document.createElement('div');
-    feedback.className = 'click-feedback';
-    feedback.style.cssText = `
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background-color: rgba(255, 255, 255, 0.5);
-        border-radius: 5px;
-        pointer-events: none;
-        animation: clickPulse 0.3s ease-out;
-    `;
-    button.appendChild(feedback);
-    setTimeout(() => feedback.remove(), 300);
-}
 
-function getClosestButton(container, x, y) {
-    const buttons = Array.from(container.querySelectorAll('.button-ph:not(.dragging), .button-placeholder'));
-    return buttons.reduce((closest, button) => {
-        const box = button.getBoundingClientRect();
-        const offsetX = x - (box.left + box.width / 2);
-        const offsetY = y - (box.top + box.height / 2);
-        const distance = Math.sqrt(offsetX * offsetX + offsetY * offsetY);
-        
-        if (distance < closest.distance) {
-            return { distance, element: button };
-        } else {
-            return closest;
-        }
-    }, { distance: Number.POSITIVE_INFINITY }).element;
-}
-
-function isBeforeButton(y, button) {
-    const box = button.getBoundingClientRect();
-    return y < box.top + box.height / 2;
-}
-
+// This existed twice in content.js; the later declaration won, so the earlier one's
+// hardening never ran. Scoping and de-duplication are merged in here. The earlier
+// copy's sort-button update was NOT merged: it wrote to
+// `sortButton.querySelector('span')`, but the button is built with a plain innerHTML
+// string and has no span, so that branch silently did nothing.
 function saveButtonOrder() {
-    const buttons = document.querySelectorAll('.button-ph');
-    const order = Array.from(buttons).map(button => button.dataset.buttonId);
-    
+    // Scope to the container: a stray .button-ph elsewhere in the page (or a leftover
+    // drag artifact) must not end up in the persisted order.
+    const container = document.getElementById('custom-extension-container');
+    if (!container) return;
+
+    // Skip entries with no buttonId and drop duplicates. The unfiltered version
+    // persisted `undefined` into customOrder whenever either occurred.
+    const order = [];
+    const seenIds = new Set();
+    container.querySelectorAll('.button-ph').forEach(button => {
+        const buttonId = button.dataset.buttonId;
+        if (!buttonId) return;
+        if (seenIds.has(buttonId)) {
+            console.warn('Duplicate buttonId in DOM during saveButtonOrder:', buttonId, '- excluding from saved order.');
+            return;
+        }
+        seenIds.add(buttonId);
+        order.push(buttonId);
+    });
+
     browserAPI.storage.local.get('configurationSets', function(data) {
         const sets = data.configurationSets || [];
         const setIndex = sets.findIndex(set => set.name === currentSetName);
-        
+
         if (setIndex !== -1) {
             sets[setIndex].customOrder = order;  // Save as customOrder instead of buttonOrder
             sets[setIndex].sortMethod = 'custom';
-            
+
             browserAPI.storage.local.set({ configurationSets: sets }, function() {
+                if (browserAPI.runtime.lastError) {
+                    console.error('Error saving button order:', browserAPI.runtime.lastError);
+                    return;
+                }
                 debugLog('Custom button order saved for set:', currentSetName, order);
-                
+
                 // Update current set in memory
-                currentSet.customOrder = order;
-                currentSet.sortMethod = 'custom';
-                
+                if (currentSet) {
+                    currentSet.customOrder = order;
+                    currentSet.sortMethod = 'custom';
+                }
+
                 // Update sort button text
                 const sortButton = document.getElementById('sort-button');
                 if (sortButton) {
@@ -3479,29 +3211,6 @@ function saveButtonOrder() {
     });
 }
 
-function loadButtonOrder() {
-    // First try to get set-specific order
-    if (currentSet && currentSet.buttonOrder) {
-        debugLog('Loading set-specific button order:', currentSet.buttonOrder);
-        const container = document.getElementById('custom-extension-container');
-        currentSet.buttonOrder.forEach(buttonId => {
-            const button = container.querySelector(`.button-ph[data-button-id="${buttonId}"]`);
-            if (button) container.appendChild(button);
-        });
-    } else {
-        // Fall back to overall button order for backwards compatibility
-        browserAPI.storage.local.get('buttonOrder', (data) => {
-            if (data.buttonOrder) {
-                debugLog('Loading global button order:', data.buttonOrder);
-                const container = document.getElementById('custom-extension-container');
-                data.buttonOrder.forEach(buttonId => {
-                    const button = container.querySelector(`.button-ph[data-button-id="${buttonId}"]`);
-                    if (button) container.appendChild(button);
-                });
-            }
-        });
-    }
-}
 
 createDynamicButtons();
 
@@ -3519,7 +3228,13 @@ function createBulkActionButtons() {
     // No positioning needed here, it will be inside the wrapper
     bulkButtonContainer.style.backgroundColor = 'white';
     bulkButtonContainer.style.padding = '10px';
-    bulkButtonContainer.style.border = '1px solid black';
+    // Was `1px solid black`. Kept a background (the panel's text needs one to stay
+    // legible over the grid) but softened the outline — at the old top-left position
+    // this sat on iNat's white header and was invisible; at bottom-left it reads as a
+    // harsh box against the page body (#61).
+    bulkButtonContainer.style.border = '1px solid rgba(0,0,0,0.15)';
+    bulkButtonContainer.style.borderRadius = '4px';
+    bulkButtonContainer.style.boxShadow = '0 1px 4px rgba(0,0,0,0.15)';
     bulkButtonContainer.style.display = 'none'; // Initially hidden
 
     // 3. Create the "Enable Bulk Action Mode" button (as before)
@@ -3533,16 +3248,29 @@ function createBulkActionButtons() {
     // 4. Create CSV loader UI
     const csvLoaderContainer = createCSVLoaderUI();
 
-    // 5. Append the button and containers to the new wrapper
+    // 4b. Drag grip so the whole bulk cluster can be moved off the iNat logo (#61).
+    // Mirrors the main cluster's grip: hidden at rest, revealed on hover.
+    const bulkDragHandle = document.createElement('div');
+    bulkDragHandle.id = 'bulk-drag-handle';
+    const bulkMoveGrip = document.createElement('span');
+    bulkMoveGrip.id = 'bulk-move-grip';
+    bulkMoveGrip.textContent = '☰';
+    bulkMoveGrip.title = 'Drag to move the bulk controls — releases into the nearest corner';
+    bulkDragHandle.appendChild(bulkMoveGrip);
+
+    // 5. Append the grip, button and containers to the new wrapper
+    bulkUiWrapper.appendChild(bulkDragHandle);
     bulkUiWrapper.appendChild(enableBulkModeButton);
     bulkUiWrapper.appendChild(bulkButtonContainer);
     bulkUiWrapper.appendChild(csvLoaderContainer);
+    setupBulkDragHandle(bulkUiWrapper, bulkMoveGrip);
 
     // 6. Append the single wrapper to the body
     document.body.appendChild(bulkUiWrapper);
 
     debugLog('Bulk action UI created');
     updateBulkButtonPosition(); // Position the new wrapper
+    applyBulkUiVisibility();    // Respect a persisted "hidden" preference (#61)
 }
 
 function createCSVLoaderUI() {
@@ -3550,7 +3278,10 @@ function createCSVLoaderUI() {
     container.id = 'csv-loader-container';
     container.style.backgroundColor = 'white';
     container.style.padding = '10px';
-    container.style.border = '1px solid black';
+    // Softened to match the bulk panel — see the note there (#61).
+    container.style.border = '1px solid rgba(0,0,0,0.15)';
+    container.style.borderRadius = '4px';
+    container.style.boxShadow = '0 1px 4px rgba(0,0,0,0.15)';
     container.style.marginTop = '10px';
     container.style.display = 'none';
 
@@ -3687,54 +3418,103 @@ function disableBulkActionMode() {
     getObservationElements().forEach(obs => obs.classList.remove('selected'));
 }
 
+// The bulk UI used to be anchored to the corner *opposite* the main button
+// cluster. With the default cluster position of bottom-right that put it at
+// top-left, squarely over the iNaturalist header logo — which is the main way
+// people navigate off the identify page (#61). It now has its own independent
+// corner, defaulting to bottom-left, moved by dragging its grip rather than by
+// Alt+N.
 function updateBulkButtonPosition() {
     debugLog('Updating bulk UI wrapper position');
-    // This function now ONLY positions the single parent wrapper
     const bulkUiWrapper = document.getElementById('bulk-ui-wrapper');
     if (!bulkUiWrapper) return;
 
     bulkUiWrapper.style.top = bulkUiWrapper.style.left = bulkUiWrapper.style.bottom = bulkUiWrapper.style.right = 'auto';
-    
-    switch (buttonPosition) {
-        case 'top-left': // Main buttons top-left, so bulk UI goes bottom-right
-            bulkUiWrapper.style.bottom = '10px';
-            bulkUiWrapper.style.right = '10px';
-            break;
-        case 'top-right': // Main buttons top-right, so bulk UI goes bottom-left
-            bulkUiWrapper.style.bottom = '10px';
-            bulkUiWrapper.style.left = '10px';
-            break;
-        case 'bottom-left': // Main buttons bottom-left, so bulk UI goes top-right
-             bulkUiWrapper.style.top = '10px';
-             bulkUiWrapper.style.right = '10px';
-             break;
-        case 'bottom-right': // Main buttons bottom-right, so bulk UI goes top-left
+
+    switch (bulkPosition) {
+        case 'top-left':
             bulkUiWrapper.style.top = '10px';
             bulkUiWrapper.style.left = '10px';
             break;
+        case 'top-right':
+            bulkUiWrapper.style.top = '10px';
+            bulkUiWrapper.style.right = '10px';
+            break;
+        case 'bottom-right':
+            bulkUiWrapper.style.bottom = '10px';
+            bulkUiWrapper.style.right = '10px';
+            break;
+        case 'bottom-left':
+        default:
+            bulkUiWrapper.style.bottom = '10px';
+            bulkUiWrapper.style.left = '10px';
+            break;
     }
+}
+
+// Snap to whichever corner the wrapper's own centre is nearest after a drag.
+function nearestCorner(rect) {
+    const vw = document.documentElement.clientWidth || window.innerWidth;
+    const vh = document.documentElement.clientHeight || window.innerHeight;
+    const vertical = (rect.top + rect.height / 2) < vh / 2 ? 'top' : 'bottom';
+    const horizontal = (rect.left + rect.width / 2) < vw / 2 ? 'left' : 'right';
+    return `${vertical}-${horizontal}`;
+}
+
+// Drag the bulk UI by its grip; on release it snaps to the nearest corner and
+// persists that choice. Free-floating px positions aren't used here (unlike the
+// main cluster) because this wrapper changes height a lot as bulk mode and the
+// CSV panel open and close, which would strand it off-screen.
+function setupBulkDragHandle(bulkUiWrapper, grip) {
+    let dragging = false, offsetX = 0, offsetY = 0;
+
+    // Keep the whole wrapper inside the viewport, matching the main cluster's
+    // clampButtonToViewport. Measured per-move rather than cached at drag start
+    // because the wrapper's height changes if the bulk or CSV panel opens mid-drag.
+    function clampBulk(left, top) {
+        const rect = bulkUiWrapper.getBoundingClientRect();
+        return {
+            left: Math.max(0, Math.min(left, Math.max(0, viewportW() - rect.width))),
+            top: Math.max(0, Math.min(top, Math.max(0, viewportH() - rect.height)))
+        };
+    }
+
+    function onMove(e) {
+        if (!dragging) return;
+        const pos = clampBulk(e.clientX - offsetX, e.clientY - offsetY);
+        bulkUiWrapper.style.bottom = bulkUiWrapper.style.right = 'auto';
+        bulkUiWrapper.style.left = pos.left + 'px';
+        bulkUiWrapper.style.top = pos.top + 'px';
+    }
+
+    function onEnd() {
+        if (!dragging) return;
+        dragging = false;
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onEnd);
+        bulkUiWrapper.classList.remove('dragging');
+        bulkPosition = nearestCorner(bulkUiWrapper.getBoundingClientRect());
+        browserAPI.storage.local.set({ bulkPosition: bulkPosition });
+        updateBulkButtonPosition();
+    }
+
+    grip.addEventListener('mousedown', function(e) {
+        dragging = true;
+        const rect = bulkUiWrapper.getBoundingClientRect();
+        offsetX = e.clientX - rect.left;
+        offsetY = e.clientY - rect.top;
+        bulkUiWrapper.classList.add('dragging');
+        e.preventDefault();
+        e.stopPropagation();
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onEnd);
+    });
 }
 
 function getObservationElements() {
     return document.querySelectorAll('.ObservationsGridItem');
 }
 
-function toggleSelection(element) {
-    if (bulkActionModeEnabled) {
-        const observationId = element.querySelector('a[href^="/observations/"]')?.href.split('/').pop();
-        if (observationId) {
-            if (element.classList.toggle('selected')) {
-                selectedObservations.add(observationId);
-            } else {
-                selectedObservations.delete(observationId);
-            }
-            debugLog('Updated selections:', selectedObservations);
-        }
-    }
-    updateVisualSelection();
-    updateBulkActionButtons();
-    updateModalTitle();
-}
 
 function updateVisualSelection() {
     getObservationElements().forEach(obsElement => {
@@ -3880,35 +3660,6 @@ function updateSelectedObservations() {
     }
 }
 
-
-async function getAvailableActions() {
-    return currentSet.buttons.filter(button => !button.configurationDisabled && !button.buttonHidden);
-}
-
-function setupTitleUpdater(modal) {
-    const title = document.createElement('h2');
-    title.id = 'action-selection-title';
-    modal.insertBefore(title, modal.firstChild);
-
-    function updateTitle() {
-        title.textContent = `Select Action for ${selectedObservations.size} Observations`;
-    }
-
-    updateTitle();
-
-    const observer = new MutationObserver(updateTitle);
-    observer.observe(document.body, { 
-        subtree: true, 
-        attributes: true, 
-        attributeFilter: ['class']
-    });
-
-    return observer;
-}
-
-function setupModalCloseHandler(cancelButton, modal) {
-    cancelButton.onclick = () => document.body.removeChild(modal);
-}
 
 async function executeBulkAction(selectedActionConfig, modal, isCancelledFunc) {
     const observationIds = Array.from(selectedObservations);
@@ -4122,6 +3873,41 @@ async function executeBulkAction(selectedActionConfig, modal, isCancelledFunc) {
                                 }
                             }
                         }
+
+                        // Annotation undo records were only ever populated in
+                        // handleActionResult(), which is dead code and never runs — so
+                        // every bulk annotation undo failed with "Annotation UUID not
+                        // found". Fill it here, and pick the undo that actually matches
+                        // the outcome: an annotation we created gets deleted, whereas a
+                        // vote we merely cast (agreeing with an identical existing
+                        // annotation, or downvoting a conflicting one we couldn't
+                        // replace) has to be withdrawn instead (#59).
+                        if (action.type === 'annotation' && actionResult.success &&
+                            preliminaryUndoRecord.observations[observationId]) {
+                            const undoActions = preliminaryUndoRecord.observations[observationId].undoActions;
+                            const undoAction = undoActions.find(ua =>
+                                (ua.type === 'removeAnnotation' || ua.type === 'removeAnnotationVote') &&
+                                !ua.uuid &&
+                                ua.attributeId === action.annotationField &&
+                                ua.valueId === action.annotationValue
+                            );
+                            if (undoAction) {
+                                const voteOnly = !!actionResult.downvotedOnly ||
+                                                 actionResult.action === 'voted' ||
+                                                 !!action.disagree;
+                                const uuid = actionResult.annotationUUID ||
+                                             actionResult.annotationVoteUUID ||
+                                             actionResult.uuid || null;
+                                undoAction.type = voteOnly ? 'removeAnnotationVote' : 'removeAnnotation';
+                                undoAction.uuid = uuid;
+                                // A delete with no UUID can't be undone at all; drop the
+                                // entry rather than leaving it to fail. (The vote branch
+                                // handles a null UUID gracefully as a no-op.)
+                                if (!uuid && !voteOnly) {
+                                    undoActions.splice(undoActions.indexOf(undoAction), 1);
+                                }
+                            }
+                        }
                     }
 
                     let resultForSummary = { ...actionResult, observationId, action: action.type };
@@ -4267,90 +4053,6 @@ async function executeBulkAction(selectedActionConfig, modal, isCancelledFunc) {
     }
 }
 
-function handleActionResult(result, action, observationId, preliminaryUndoRecord, results, skippedObservations) {
-    if (result.success) {
-        if (action.type === 'addComment' && result.commentUUID) {
-            const undoAction = preliminaryUndoRecord.observations[observationId].undoActions.find(
-                ua => ua.type === 'removeComment' && ua.commentBody === action.commentBody
-            );
-            if (undoAction) {
-                undoAction.commentUUID = result.commentUUID;
-                debugLog(`Updated undo action with comment UUID: ${result.commentUUID}`);
-            }
-        } else if (action.type === 'annotation' && result.annotationUUID) {
-            const undoAction = preliminaryUndoRecord.observations[observationId].undoActions.find(
-                ua => ua.type === 'removeAnnotation' &&
-                    ua.attributeId === action.annotationField &&
-                    ua.valueId === action.annotationValue
-            );
-            if (undoAction) {
-                undoAction.uuid = result.annotationUUID;
-            }
-        } else if (action.type === 'annotation' && action.disagree && result.annotationVoteUUID) {
-            const undoAction = preliminaryUndoRecord.observations[observationId].undoActions.find(
-                ua => ua.type === 'removeAnnotationVote' &&
-                    ua.attributeId === action.annotationField &&
-                    ua.valueId === action.annotationValue
-            );
-            if (undoAction) {
-                undoAction.uuid = result.annotationVoteUUID;
-            }
-        } else if (action.type === 'addTaxonId' && result.identificationUUID) {
-            const undoAction = preliminaryUndoRecord.observations[observationId].undoActions.find(
-                ua => ua.type === 'removeIdentification' && ua.taxonId === action.taxonId
-            );
-            if (undoAction) {
-                undoAction.identificationUUID = result.identificationUUID;
-                debugLog(`Updated undo action with identification UUID: ${result.identificationUUID}`);
-            }
-        } else if (action.type === 'addTag' && result.previousTags) {
-            const undoAction = preliminaryUndoRecord.observations[observationId].undoActions.find(
-                ua => ua.type === 'removeTag' && ua.tagText === action.tagText
-            );
-            if (undoAction) {
-                undoAction.previousTags = result.previousTags;
-                debugLog(`Updated undo action with previous tags for observation ${observationId}`);
-            }
-        }
-    } else {
-        console.error(`Action failed for observation ${observationId}:`, safeErrorString(result.error));
-        skippedObservations.push(observationId);
-    }
-    results.push({ observationId, action: action.type, success: result.success, error: result.error });
-}
-
-function handleActionResults(results, skippedObservations, undoRecord, errorMessages) {
-    const successCount = results.filter(r => r.success).length;
-    const totalActions = results.length;
-    const skippedCount = skippedObservations.length;
-    const errorCount = errorMessages.length;
-    
-    let message = `Bulk action applied: ${successCount} out of ${totalActions} actions completed successfully.`;
-    
-    if (skippedCount > 0) {
-        const skippedURL = generateObservationURL(skippedObservations);
-        debugLog('Generated URL for skipped observations:', skippedURL);
-        createActionResultsModal(skippedCount, skippedURL, errorMessages);
-    } else if (errorCount > 0) {
-        createErrorModal(errorMessages);
-    } else {
-        alert(message);
-    }
-
-    debugLog('Bulk action results:', results);
-}
-
-function getExistingObservationFieldValue(observationState, fieldId) {
-    debugLog('Checking existing value for field:', fieldId, 'in state:', observationState);
-    if (observationState && observationState.ofvs) {
-        const field = observationState.ofvs.find(f => f.field_id.toString() === fieldId);
-        debugLog('Found field:', field);
-        return field ? field.value : null;
-    }
-    debugLog('No existing value found');
-    return null;
-}
-
 
 // chrome.storage.local has a default 10 MB quota. When we exceed it, set() silently
 // fails: callback fires, lastError is set, but no record is saved. Trim oldest records
@@ -4388,15 +4090,6 @@ function storeUndoRecord(undoRecord) {
     });
 }
 
-function downloadTextFile(content, filename) {
-    const blob = new Blob([content], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
-}
 
 async function generatePreActionStates(observationIds, checkCancelled, modal, actions = []) {
     debugLog('=== PRE-ACTION STATES DEBUG START ===');
@@ -4418,7 +4111,10 @@ async function generatePreActionStates(observationIds, checkCancelled, modal, ac
     // v2 `:!t` on a complex type only includes the key, not its subfields — verified
     // empirically: `ofvs:!t` returned `[{}]` and `project_observations:!t` omitted
     // the nested `project` object. Enumerate the subfields downstream code actually reads.
-    const fieldsParam = '(id:!t,uuid:!t,identifications:(id:!t,uuid:!t,user:(id:!t),current:!t,taxon:(id:!t,name:!t),created_at:!t),ofvs:(field_id:!t,value:!t),project_observations:(project:(id:!t)),reviewed_by:!t)';
+    // `annotations` is needed so an annotation action can record the value it is about
+    // to replace — without it, undo deletes the new annotation and leaves the
+    // observation bare instead of restoring what was there before.
+    const fieldsParam = '(id:!t,uuid:!t,identifications:(id:!t,uuid:!t,user:(id:!t),current:!t,taxon:(id:!t,name:!t),created_at:!t),ofvs:(field_id:!t,value:!t),annotations:(uuid:!t,controlled_attribute_id:!t,controlled_value_id:!t,user_id:!t,votes:(user_id:!t,vote_flag:!t)),project_observations:(project:(id:!t)),reviewed_by:!t)';
     const encodedFields = encodeURIComponent(fieldsParam);
     for (let i = 0; i < observationIds.length; i += batchSize) {
         // Check for cancellation
@@ -4575,23 +4271,70 @@ async function generatePreliminaryUndoRecord(action, observationIds, preActionSt
                         originalValue: preActionStates[observationId].ofvs?.find(ofv => ofv.field_id === parseInt(actionItem.fieldId))?.value
                     };
                     break;
-                case 'annotation':
+                case 'annotation': {
+                    // Record my own pre-existing vote, and its DIRECTION, on every
+                    // annotation for this attribute — keyed by annotation uuid.
+                    //
+                    // Which annotation the action votes on isn't knowable in advance: it
+                    // may agree with an identical existing value, or downvote a conflicting
+                    // one, and a multivalued attribute can carry several annotations. So
+                    // don't try to predict it — record them all and let undo look up the
+                    // uuid it actually voted on.
+                    //
+                    // Direction matters: a bare "did a vote exist" boolean is not enough.
+                    // If the user had downvoted and the action then cast an agree vote,
+                    // skipping the undo leaves the flipped vote in place.
+                    const myUserId = await getCurrentUserId();
+                    const attrId = parseInt(actionItem.annotationField);
+                    const annotationsForAttr = (preActionStates[observationId].annotations || [])
+                        .filter(a => a.controlled_attribute_id === attrId);
+                    const priorVotes = {};
+                    if (myUserId) {
+                        annotationsForAttr.forEach(a => {
+                            const mine = (a.votes || []).find(v => v.user_id === myUserId);
+                            if (mine) priorVotes[a.uuid] = mine.vote_flag;
+                        });
+                    }
+                    // Without a user id we cannot tell our votes from anyone else's. Flag
+                    // it so undo errs toward leaving votes alone rather than withdrawing
+                    // one it may not have created — losing a real vote is worse than an
+                    // incomplete undo.
+                    const priorVotesKnown = !!myUserId;
+
                     if (actionItem.disagree) {
                         undoAction = {
                             type: 'removeAnnotationVote',
                             attributeId: actionItem.annotationField,
                             valueId: actionItem.annotationValue,
-                            uuid: null // Filled in after the disagree vote is recorded
+                            uuid: null, // Filled in after the disagree vote is recorded
+                            priorVotes,
+                            priorVotesKnown
                         };
                     } else {
+                        // If this attribute already carries a different value, the action
+                        // will replace it (delete + re-add). Record the old value so undo
+                        // can put it back — otherwise undo deletes the new annotation and
+                        // leaves the observation with nothing, silently discarding what
+                        // the user had before.
+                        const priorValueId = annotationsForAttr.length ? annotationsForAttr[0].controlled_value_id : null;
                         undoAction = {
                             type: 'removeAnnotation',
                             attributeId: actionItem.annotationField,
                             valueId: actionItem.annotationValue,
-                            uuid: null // Filled in after the action is performed
+                            uuid: null, // Filled in after the action is performed
+                            // null when there was nothing there, or when the existing value
+                            // already matched (nothing was replaced, so nothing to restore).
+                            originalValueId: (priorValueId !== null && priorValueId !== parseInt(actionItem.annotationValue))
+                                ? priorValueId : null,
+                            // The action may resolve to a vote instead of a new annotation
+                            // (agree with an identical existing value, or downvote one we
+                            // can't replace); the type is corrected after it runs.
+                            priorVotes,
+                            priorVotesKnown
                         };
                     }
                     break;
+                }
                 case 'addToProject':
                     try {
                         const isInProject = preActionStates[observationId].project_observations.some(
@@ -4712,236 +4455,8 @@ async function generatePreliminaryUndoRecord(action, observationIds, preActionSt
 }
 
 
-function updateUndoRecord(undoRecord, actionResults) {
-    for (const [observationId, results] of Object.entries(actionResults)) {
-        undoRecord.observations[observationId].undoActions.forEach(undoAction => {
-            if (undoAction.type === 'removeComment') {
-                undoAction.commentId = results.addedCommentId;
-            } else if (undoAction.type === 'removeIdentification') {
-                undoAction.identificationId = results.addedIdentificationId;
-            }
-        });
-    }
-    return undoRecord;
-}
-
-function generateUndoSummary(undoRecord) {
-    let summary = `Undo Record for action: ${undoRecord.action}\n\n`;
-    
-    for (const [observationId, observationData] of Object.entries(undoRecord.observations)) {
-        summary += `Observation ${observationId}:\n`;
-        observationData.undoActions.forEach(undoAction => {
-            switch (undoAction.type) {
-                case 'updateAnnotation':
-                    summary += `  - Revert annotation ${undoAction.attributeId} to ${undoAction.originalValue || 'None'}\n`;
-                    break;
-                case 'updateObservationField':
-                    summary += `  - Revert observation field ${undoAction.fieldId} to ${undoAction.originalValue || 'None'}\n`;
-                    break;
-                case 'removeFromProject':
-                    summary += `  - ${undoAction.remove ? 'Add to' : 'Remove from'} project: ${undoAction.projectName}\n`;
-                    break;                    
-                case 'removeComment':
-                    summary += `  - Remove added comment (ID: ${undoAction.commentId || 'Unknown'})\n`;
-                    break;
-                case 'removeIdentification':
-                    summary += `  - Remove added identification (ID: ${undoAction.identificationId || 'Unknown'})\n`;
-                    break;
-                case 'removeQualityMetric':
-                    summary += `  - Remove quality metric ${undoAction.metric}\n`;
-                    break;
-                case 'removeTag':
-                    summary += `  - Remove tag "${undoAction.tagText}"\n`;
-                    break;
-            }
-        });
-        summary += '\n';
-    }
-    
-    return summary;
-}
 
 
-function downloadUndoRecord(undoRecord) {
-    const content = JSON.stringify(undoRecord, null, 2);
-    const blob = new Blob([content], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'undo_record.json';
-    a.click();
-    URL.revokeObjectURL(url);
-}
-
-function getQualityMetricName(metric) {
-    const metricNames = {
-        'needs_id': 'Needs ID',
-        'date': 'Date',
-        'location': 'Location',
-        'wild': 'Wild',
-        'evidence': 'Evidence',
-        'recent': 'Recent',
-        'subject': 'Subject'
-    };
-    return metricNames[metric] || metric;
-}
-
-function showUndoRecordsModal() {
-    getUndoRecords(function(undoRecords) {
-        debugLog('Retrieved undo records:', undoRecords);
-        if (undoRecords.length === 0) {
-            alert('No undo records available.');
-            return;
-        }
-
-        const modal = createUndoRecordsModal(undoRecords, function(record) {
-            performUndoActions(record)
-                .then(() => {
-                    removeUndoRecord(record.id, function() {
-                        document.body.removeChild(modal);
-                        showUndoRecordsModal(); // Refresh the modal
-                    });
-                })
-                .catch(error => {
-                    alert(`Error performing undo actions: ${error.message}`);
-                });
-        });
-
-        document.body.appendChild(modal);
-    });
-}
-
-function createActionResultsModal(results, skippedCount, skippedURL, overwrittenCount, overwrittenDetails, errorMessages) {
-    const modal = document.createElement('div');
-    modal.style.cssText = `
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background-color: rgba(0, 0, 0, 0.5);
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        z-index: 10000;
-    `;
-
-    const modalContent = document.createElement('div');
-    modalContent.style.cssText = `
-        background-color: white;
-        padding: 20px;
-        border-radius: 5px;
-        max-width: 80%;
-        max-height: 80%;
-        overflow-y: auto;
-        font-size: 14px; /* Added for consistency */
-    `;
-
-    let contentHTML = `<h2 style="margin-top:0;">Bulk Action Results</h2>`; // Added style for consistency
-
-    const pluralizeLocal = (count, singular, plural = null) => { // Local pluralize
-        if (plural === null) plural = singular + 's';
-        return count === 1 ? singular : plural;
-    };
-
-    const successCount = results.filter(r => r.success && !r.noActionNeeded).length; // Exclude noActionNeeded from pure success count here
-    const noActionNeededCount = results.filter(r => r.success && r.noActionNeeded).length;
-
-    if (successCount > 0) {
-        contentHTML += `<p style="color: green;">${successCount} action(s) completed successfully.</p>`;
-    }
-    if (noActionNeededCount > 0) {
-        contentHTML += `<p style="color: #666;">${noActionNeededCount} action(s) required no change (e.g., value already set).</p>`;
-    }
-
-
-    if (overwrittenCount > 0) {
-        contentHTML += `
-            <div style="margin: 15px 0; padding: 10px; background: #ffebee; border: 1px solid #ffcdd2; border-radius: 4px;">
-                <h4>Values Overwritten (${overwrittenCount} ${pluralizeLocal(overwrittenCount, "observation")})</h4>
-                <p>The following observation field values were overwritten (Overwrite Mode was ON):</p>
-                <div style="max-height: 150px; overflow-y: auto;"><ul>
-        `;
-        Object.entries(overwrittenDetails).forEach(([observationId, fields]) => { // Changed from 'details' to 'fields'
-            contentHTML += `
-                <li>
-                    <a href="${getINatSiteBase()}/observations/${encodeURIComponent(observationId)}"
-                       target="_blank"
-                       style="color: #0077cc; text-decoration: underline;">
-                        Observation ${escapeHtml(observationId)}
-                    </a>:
-                    <ul>
-            `;
-            Object.entries(fields).forEach(([fieldName, values]) => { // Changed from 'details' to 'values'
-                contentHTML += `<li>"${escapeHtml(fieldName)}": from "${escapeHtml(values.oldValue)}" to "${escapeHtml(values.newValue)}"</li>`;
-            });
-            contentHTML += `</ul></li>`;
-        });
-        contentHTML += `</ul></div></div>`;
-    }
-
-    if (skippedCount > 0 && skippedURL) { // Ensure skippedURL is present
-        contentHTML += `
-            <div style="margin: 15px 0; padding: 10px; background: #fff8e1; border: 1px solid #ffecb3; border-radius: 4px;">
-                <h4>Observations Skipped by Safe Mode (${skippedCount})</h4>
-                <p>
-                    <a class="modal-link" href="${escapeHtml(safeUrl(skippedURL))}" target="_blank" style="color: #4caf50; text-decoration: underline;">
-                        View ${skippedCount} skipped ${pluralizeLocal(skippedCount, "observation")}
-                    </a>
-                </p>
-            </div>
-        `;
-    }
-
-    const actualFailures = results.filter(r => !r.success);
-    if (actualFailures.length > 0) {
-         contentHTML += `
-            <div style="margin: 15px 0; padding: 10px; background: #ffeded; border: 1px solid #ffcccb; border-radius: 4px;">
-                <h4>Failed Actions (${actualFailures.length})</h4>
-                <div style="max-height: 150px; overflow-y: auto;"><ul>`;
-        actualFailures.forEach(f => {
-             contentHTML += `<li>Obs. <a href="${getINatSiteBase()}/observations/${encodeURIComponent(f.observationId)}" target="_blank">${escapeHtml(f.observationId)}</a> (Action: ${escapeHtml(f.action || 'Unknown')}): ${escapeHtml(getCleanErrorMessage(f.message || f.error))} ${f.reason ? `(${escapeHtml(f.reason)})` : ''}</li>`;
-        });
-        contentHTML += `</ul></div></div>`;
-    }
-    
-    if (errorMessages && errorMessages.length > 0) {
-        contentHTML += `
-            <div style="margin: 15px 0; padding: 10px; background: #fff1f0; border: 1px solid #ffcccb; border-radius: 4px;">
-                <h4>Overall Errors Encountered:</h4>
-                <ul>${errorMessages.map(err => `<li>${escapeHtml(err)}</li>`).join('')}</ul>
-            </div>`;
-    }
-    
-    if (successCount === 0 && noActionNeededCount === 0 && skippedCount === 0 && actualFailures.length === 0 && (!errorMessages || errorMessages.length === 0)) {
-        contentHTML += "<p><em>No actions were performed or had notable outcomes.</em></p>";
-    }
-
-
-    contentHTML += `<button id="general-results-close-button" class="modal-button" style="margin-top:15px;">Close</button>`;
-    modalContent.innerHTML = contentHTML;
-    modal.appendChild(modalContent);
-
-    document.body.appendChild(modal);
-
-    const closeButton = modalContent.querySelector('#general-results-close-button');
-    const handleKeyPress = (event) => {
-        if (event.key === 'Enter' || event.key === 'Escape') {
-            event.preventDefault();
-            if(closeButton) closeButton.click();
-        }
-    };
-    document.addEventListener('keydown', handleKeyPress);
-
-    if (closeButton) {
-        closeButton.addEventListener('click', () => {
-            document.removeEventListener('keydown', handleKeyPress);
-            if (modal.parentNode) {
-                modal.parentNode.removeChild(modal);
-            }
-        });
-    }
-}
 
 window.addEventListener('popstate', updateSelectedObservations);
 window.addEventListener('pushstate', updateSelectedObservations);
@@ -5142,6 +4657,16 @@ browserAPI.storage.onChanged.addListener(function(changes, namespace) {
             currentPositionIndex = positions.indexOf(buttonPosition);
             if (currentPositionIndex === -1) currentPositionIndex = 0; // Fallback
             updatePositions();
+        }
+
+        if (changes.bulkPosition) {
+            bulkPosition = changes.bulkPosition.newValue || 'bottom-left';
+            updateBulkButtonPosition();
+        }
+
+        if (changes.bulkUiHidden) {
+            // persist:false — the write that triggered this is already stored.
+            setBulkUiHidden(changes.bulkUiHidden.newValue, false);
         }
 
         if (changes.safeMode) {
@@ -5400,43 +4925,6 @@ function switchConfigurationSet(setName) {
 }
 
 
-function updateBulkActionDropdown(actionSelect, availableActions) {
-    debugLog('Updating bulk action dropdown. Available actions:', availableActions);
-    if (actionSelect) {
-        // Save the current selection
-        const currentSelection = actionSelect.value;
-        
-        // Clear existing options
-        actionSelect.innerHTML = '';
-        
-        // Add default option
-        const defaultOption = document.createElement('option');
-        defaultOption.value = "";
-        defaultOption.textContent = "Select an action";
-        defaultOption.disabled = true;
-        defaultOption.selected = true;
-        actionSelect.appendChild(defaultOption);
-        
-        // Add options for each available action
-        availableActions.forEach(button => {
-            const option = document.createElement('option');
-            option.value = button.id;
-            option.textContent = button.name;
-            actionSelect.appendChild(option);
-        });
-        
-        // Restore the previous selection if it still exists
-        if (Array.from(actionSelect.options).some(option => option.value === currentSelection)) {
-            actionSelect.value = currentSelection;
-        } else {
-            actionSelect.value = ""; // Reset to default if the previous selection is no longer available
-        }
-        
-        // Update the action description
-        updateActionDescription(actionSelect);
-    }
-}
-
 function updateActionDescription(actionSelect) {
     const descriptionElement = document.getElementById('action-description');
     if (actionSelect && descriptionElement) {
@@ -5532,14 +5020,6 @@ function updateActionDescription(actionSelect) {
     }
 }
 
-async function fetchTaxonData(taxonId) {
-    const response = await fetch(`${API_URL}/taxa/${taxonId}`);
-    if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    const data = await response.json();
-    return data.results[0];
-}
 
 function getQualityMetricName(metric) {
     const metricNames = {
@@ -5639,50 +5119,6 @@ function delay(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-function createErrorModal(errorMessages) {
-    const modal = document.createElement('div');
-    modal.style.cssText = `
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background-color: rgba(0, 0, 0, 0.5);
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        z-index: 10000;
-    `;
-
-    const modalContent = document.createElement('div');
-    modalContent.style.cssText = `
-        background-color: white;
-        padding: 20px;
-        border-radius: 5px;
-        max-width: 80%;
-        max-height: 80%;
-        overflow-y: auto;
-    `;
-
-    let contentHTML = `
-        <h2>Bulk Action Errors</h2>
-        <p>${errorMessages.length} errors occurred during execution:</p>
-        <ul>
-            ${errorMessages.map(error => `<li>${escapeHtml(error)}</li>`).join('')}
-        </ul>
-        <button id="closeModal" class="modal-button">Close</button>
-    `;
-
-    modalContent.innerHTML = contentHTML;
-
-    modal.appendChild(modalContent);
-
-    document.body.appendChild(modal);
-
-    document.getElementById('closeModal').addEventListener('click', () => {
-        document.body.removeChild(modal);
-    });
-}
 
 function clearSelection() {
     selectedObservations.clear();
@@ -6044,26 +5480,6 @@ async function createTooltipContent(fieldValues, selectedAction) {
     return content;
 }
 
-function toggleObservationSelection(element, selected) {
-    if (selected) {
-        element.classList.add('observation-selected');
-    } else {
-        element.classList.remove('observation-selected');
-    }
-}
-
-// Helper function to handle z-index when both highlights are present
-function updateHighlightZIndex(element) {
-    const hasExistingValues = element.classList.contains('observation-existing-values');
-    const isSelected = element.classList.contains('observation-selected');
-    
-    if (hasExistingValues && isSelected) {
-        const warningIcon = element.querySelector('.observation-warning-icon');
-        if (warningIcon) {
-            warningIcon.style.zIndex = '1002';
-        }
-    }
-}
 
 async function validateBulkAction(selectedAction, observationIds, getIsCancelled) {
     debugLog('Starting validateBulkAction with:', {selectedAction, observationIds});
@@ -6209,70 +5625,6 @@ async function validateBulkAction(selectedAction, observationIds, getIsCancelled
     return results;
 }
 
-
-async function createValidationSummary(validationResults) {
-    const { safeMode = true } = await new Promise(resolve => 
-        browserAPI.storage.local.get('safeMode', resolve)
-    );
-
-    let summary = '<div style="margin: 10px 0; padding: 10px; background: #f5f5f5; border-radius: 4px;">';
-    
-    const hasExistingValues = validationResults.toSkip.length > 0 || validationResults.existingValues.size > 0;
-    
-    if (hasExistingValues) {
-        if (safeMode) {
-            summary += `
-                <p><strong>Safe Mode is ON</strong></p>
-                <p>Will process: ${validationResults.toProcess.length} observation(s)</p>
-                <p>Will skip: ${validationResults.toSkip.length} observation(s) with existing values</p>
-            `;
-
-            if (validationResults.toSkip.length <= 10) {
-                summary += '<div style="margin-top: 10px;"><strong>Observations to skip:</strong><ul>';
-                validationResults.toSkip.forEach(({ observationId, existingFields }) => {
-                    const fieldsList = Object.entries(existingFields)
-                        .map(([fieldId, value]) => {
-                            const fieldName = validationResults.fieldNames.get(fieldId);
-                            const newValue = validationResults.proposedValues?.get(fieldId);
-                            return `${fieldName}: "${value}" (would be "${newValue}")`;
-                        })
-                        .join(', ');
-                    summary += `<li>Observation ${observationId}: ${fieldsList}</li>`;
-                });
-                summary += '</ul></div>';
-            }
-        } else {
-            summary += `
-                <p><strong>Overwrite Mode is ON</strong></p>
-                <p style="color: red;">Warning: This will overwrite existing values in ${validationResults.existingValues.size} observation(s)</p>
-                <p>Total observations to process: ${validationResults.total}</p>
-            `;
-
-            if (validationResults.existingValues.size <= 10) {
-                summary += '<div style="margin-top: 10px;"><strong>Values that will be overwritten:</strong><ul>';
-                for (const [observationId, info] of validationResults.existingValues) {
-                    const fieldsList = Object.entries(info.existingFields)
-                        .map(([fieldId, value]) => {
-                            const fieldName = validationResults.fieldNames.get(fieldId);
-                            const newValue = validationResults.proposedValues?.get(fieldId);
-                            return `${fieldName}: "${value}" → "${newValue}"`;
-                        })
-                        .join(', ');
-                    summary += `<li>Observation ${observationId}: ${fieldsList}</li>`;
-                }
-                summary += '</ul></div>';
-            }
-        }
-    } else {
-        summary += `
-            <p>All ${validationResults.total} selected observation(s) will be processed.</p>
-            <p>No existing values found.</p>
-        `;
-    }
-    
-    summary += '</div>';
-    return summary;
-}
 
 async function createActionModal(preSelectedActionId = null) {
     let isActionCancelled = false;
@@ -7081,152 +6433,6 @@ function createProgressModal() {
     return modal;
 }
 
-// Bulk action shortcut handler
-async function handleBulkActionShortcut(selectedAction) {
-    try {
-        const observationIds = Array.from(selectedObservations);
-        const validationResults = await validateBulkAction(selectedAction, observationIds);
-        
-        // Get the safe mode setting
-        const { safeMode = true } = await new Promise(resolve => 
-            browserAPI.storage.local.get('safeMode', resolve)
-        );
-
-        // Get observations to highlight based on validation results
-        const observationsToHighlight = safeMode ? 
-            validationResults.toSkip.map(item => ({
-                observationId: item.observationId,
-                fieldValues: Object.fromEntries(
-                    Object.entries(item.existingFields).map(([fieldId, value]) => [
-                        validationResults.fieldNames.get(fieldId),
-                        {
-                            current: value,
-                            proposed: validationResults.proposedValues.get(fieldId)
-                        }
-                    ])
-                )
-            })) :
-            Array.from(validationResults.existingValues.entries()).map(([observationId, info]) => ({
-                observationId,
-                fieldValues: Object.fromEntries(
-                    Object.entries(info.existingFields).map(([fieldId, value]) => [
-                        validationResults.fieldNames.get(fieldId),
-                        {
-                            current: value,
-                            proposed: validationResults.proposedValues.get(fieldId)
-                        }
-                    ])
-                )
-            }));
-
-        // Show warnings for observations with existing values
-        highlightObservationsWithExistingValues(observationsToHighlight, selectedAction);
-
-        const validationModal = await createValidationModal(
-            validationResults,
-            selectedAction,
-            async () => {
-                // Clear highlights when proceeding
-                highlightObservationsWithExistingValues([], null, true);
-                const progressModal = createProgressModal();
-                document.body.appendChild(progressModal);
-                await executeBulkAction(selectedAction, progressModal, () => false);
-            },
-            () => {
-                // Clear highlights when cancelling
-                highlightObservationsWithExistingValues([], null, true);
-                debugLog('Validation cancelled');
-            }
-        );
-        
-        document.body.appendChild(validationModal);
-    } catch (error) {
-        console.error('Error in bulk action shortcut:', error);
-        alert(`Error: ${error.message}`);
-        highlightObservationsWithExistingValues([], null, true);
-    }
-}
-
-// Helper function to create action description HTML
-function createActionDescription(selectedAction) {
-    const container = document.createElement('div');
-    container.style.cssText = `
-        margin-bottom: 20px;
-        padding: 15px;
-        background: #f8f9fa;
-        border-radius: 8px;
-        border: 1px solid #e9ecef;
-    `;
-
-    container.innerHTML = `
-        <h3 style="margin-top: 0; margin-bottom: 10px; color: #1a73e8;">Action: ${escapeHtml(selectedAction.name)}</h3>
-        <div class="action-details" style="color: #202124;">
-            ${selectedAction.actions.map(action => {
-                let actionDesc = '';
-                switch(action.type) {
-                    case 'reviewed':
-                        actionDesc = `Mark the observation as ${action.reviewed === 'mark' ? 'reviewed' : 'unreviewed'}`;
-                        break;
-                    case 'follow':
-                        actionDesc = `${action.follow === 'follow' ? 'Follow' : 'Unfollow'} the observation`;
-                        break;
-                    case 'withdrawId':
-                        actionDesc = `Withdraw your current identification`;
-                        break;
-                    case 'agreeId':
-                        actionDesc = `Agree with the community ID`;
-                        break;
-                    case 'observationField':
-                        if (action.promptForValue) {
-                            actionDesc = `Set field "${action.fieldName}" (will prompt for value)`;
-                        } else {
-                            const displayValue = action.displayValue || action.fieldValue;
-                            actionDesc = `Set field "${action.fieldName}" to "${displayValue}"`;
-                        }
-                        break;
-                    case 'annotation':
-                        const fieldName = getAnnotationFieldName(action.annotationField);
-                        const valueName = getAnnotationValueName(action.annotationField, action.annotationValue);
-                        actionDesc = action.disagree
-                            ? `Downvote annotation: ${fieldName} = ${valueName}`
-                            : `Add annotation: ${fieldName} = ${valueName}`;
-                        break;
-                    case 'addToProject':
-                        actionDesc = `${action.remove ? 'Remove from' : 'Add to'} project: ${action.projectName}`;
-                        break;
-                    case 'addComment':
-                        actionDesc = `Add comment: "${action.commentBody.substring(0, 50)}${action.commentBody.length > 50 ? '...' : ''}"`;
-                        break;
-                    case 'addTaxonId':
-                        actionDesc = `Add taxon ID: ${action.taxonName}`;
-                        break;
-                    case 'qualityMetric':
-                        const metricName = getQualityMetricName(action.metric);
-                        actionDesc = `Set quality metric: ${metricName} to ${action.vote}`;
-                        break;
-                    case 'copyObservationField':
-                        actionDesc = `Copy field: ${action.sourceFieldName} to ${action.targetFieldName}`;
-                        break;
-                }
-                return actionDesc ? `
-                    <div class="action-item" style="
-                        margin: 8px 0;
-                        padding-left: 20px;
-                        position: relative;
-                    ">
-                        <span style="
-                            position: absolute;
-                            left: 8px;
-                            color: #1a73e8;
-                        ">•</span>
-                        ${escapeHtml(actionDesc)}
-                    </div>` : '';
-            }).join('')}
-        </div>
-    `;
-
-    return container;
-}
 
 async function handleFollowAndReviewPrevention(observationId, actions, results) {
     // Get prevention settings

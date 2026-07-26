@@ -323,7 +323,6 @@ function setupDateSelector(type) {
 }
 
 
-
 function addField(type) {
     const container = document.getElementById('actionsContainer');
     const fieldCount = container.querySelectorAll('.action-box').length;
@@ -954,20 +953,6 @@ async function generateURL() {
     document.getElementById('urlOutputs').style.display = 'block';
 
     return queryString;
-}
-
-function setupUserAutocomplete(input, idInput) {
-    setupAutocompleteDropdown(input, lookupUser, (result) => {
-        idInput.value = result.id;
-        input.value = result.login;
-    });
-}
-
-function setupProjectAutocomplete(input, idInput) {
-    setupAutocompleteDropdown(input, lookupProject, (result) => {
-        idInput.value = result.id;
-        input.value = result.title;
-    });
 }
 
 
@@ -1815,28 +1800,5 @@ function setupActionBoxToggle(actionBox) {
         // Regenerate URL and save state
         generateURL();
         saveInputs();
-    });
-}
-
-function verifyNameIdConsistency() {
-    const actionsContainer = document.getElementById('actionsContainer');
-    if (!actionsContainer) return;
-
-    actionsContainer.querySelectorAll('.action-box').forEach(actionBox => {
-        const actionType = actionBox.querySelector('.action-type').textContent;
-        
-        if (['taxon', 'user', 'project', 'place', 'identifier'].includes(actionType)) {
-            const nameInput = actionBox.querySelector(`input[id^="${actionType}"][id$="Id"]`);
-            const idInput = actionBox.querySelector(`input[id^="${actionType}Id"]`);
-            
-            // If one exists without the other, clear both
-            if (nameInput && idInput) {
-                if ((!nameInput.value && idInput.value) || (nameInput.value && !idInput.value)) {
-                    debugLog(`Clearing mismatched ${actionType} field`);
-                    nameInput.value = '';
-                    idInput.value = '';
-                }
-            }
-        }
     });
 }

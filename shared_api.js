@@ -219,7 +219,17 @@ function lookupProjectById(projectId) {
         });
 }
 
-function lookupObservationField(name, perPage = 10) {
+// The autocomplete endpoint ranks by usage, so a short exact-match field name can
+// be buried under longer, more popular ones — "Date" (id 108) sits at rank 30 for
+// q=date, behind "Date Recorded", "Date Observed", etc. Fetching a wider page and
+// hoisting exact matches keeps those reachable (#60).
+//
+// Fetch wide, display narrow: the dropdown renders every result it's handed, so
+// the ranked list is trimmed to FIELD_SUGGESTION_LIMIT before display. That's
+// still double the 10 the dropdown used to show, and the exact match is now in it.
+const FIELD_SUGGESTION_LIMIT = 20;
+
+function lookupObservationField(name, perPage = 50) {
     return new Promise((resolve, reject) => {
         const baseUrl = `${API_URL}/observation_fields/autocomplete`;
         const params = new URLSearchParams({
@@ -241,7 +251,7 @@ function lookupObservationField(name, perPage = 10) {
                         ...field,
                         usageCount: field.values_count || 0 // Assuming 'values_count' represents usage
                     }));
-                    resolve(fieldsWithUsage);
+                    resolve(sortFieldsByRelevance(fieldsWithUsage, name).slice(0, FIELD_SUGGESTION_LIMIT));
                 } else {
                     reject(new Error('No observation fields found'));
                 }
@@ -250,6 +260,52 @@ function lookupObservationField(name, perPage = 10) {
     });
 }
 
+// Stable re-rank: exact name matches first, then names starting with the query,
+// then everything else in the API's original usage order. Only reorders what the
+// API already returned — it does not re-sort by usage within a tier.
+function sortFieldsByRelevance(fields, query) {
+    const q = (query || '').trim().toLowerCase();
+    if (!q) return fields;
+    const tier = field => {
+        const n = (field.name || '').trim().toLowerCase();
+        if (n === q) return 0;
+        if (n.startsWith(q)) return 1;
+        return 2;
+    };
+    return fields
+        .map((field, i) => ({ field, i, t: tier(field) }))
+        .sort((a, b) => (a.t - b.t) || (a.i - b.i))
+        .map(x => x.field);
+}
+
+// Resolve a single observation field by numeric ID, for the manual-entry escape
+// hatch when the field can't be surfaced by name (#60).
+//
+// NOTE: there is no v1 endpoint for this — GET /v1/observation_fields/:id returns
+// a 404 HTML page. The legacy Rails endpoint is the only option, and it returns
+// datatype and allowed_values, which the caller needs to build the value input.
+function lookupObservationFieldById(fieldId) {
+    const url = `https://www.inaturalist.org/observation_fields/${encodeURIComponent(fieldId)}.json`;
+    return fetch(url)
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (data && data.id) {
+                return data;
+            }
+            throw new Error(`No observation field found with ID ${fieldId}`);
+        });
+}
+
+
+// DO NOT DELETE as "unreferenced": this is reached only through the dynamic dispatch
+// at URLgen.js `window[`lookup${Type}`]`, so no static reference to the name exists.
+// The URL builder's Place filter depends on it. Same applies to lookupUser/lookupProject
+// below, though those also have static callers.
 function lookupPlace(query, perPage = 10) {
     const baseUrl = `${API_URL}/places/autocomplete`;
     const params = new URLSearchParams({
@@ -575,23 +631,6 @@ function updateFieldValueInput(field, container, existingValue = null) {
     return input;
 }
 
-function setupObservationFieldAutocomplete(nameInput, idInput) {
-    setupAutocompleteDropdown(nameInput, lookupObservationField, (result) => {
-        idInput.value = result.id;
-        const actionItem = nameInput.closest('.action-item') || nameInput.closest('.field-group');
-        if (actionItem) {
-            const fieldDescription = actionItem.querySelector('.fieldDescription');
-            if (fieldDescription) {
-                fieldDescription.textContent = result.description || '';
-            }
-            const fieldValueContainer = actionItem.querySelector('.fieldValueContainer');
-            if (fieldValueContainer) {
-                updateFieldValueInput(result, fieldValueContainer);
-            }
-        }
-    });
-}
-
 
 function generateObservationURL(observationIds) {
     const baseURL = getIdentifyPageUrl();
@@ -608,7 +647,11 @@ function removeUndoRecord(id, callback) {
         });
     });
 }
-function createUndoRecordsModal(undoRecords, onUndoClick) {
+// The undo itself is performed by this modal's own undo button handler below. There
+// used to be a second `onUndoClick` parameter, but it was never invoked — both callers
+// passed a callback that did nothing, and the two callbacks had drifted apart in a way
+// that looked like a behavioural difference while having no effect at all.
+function createUndoRecordsModal(undoRecords) {
     try {
         const overlay = document.createElement('div');
         overlay.style.cssText = `
@@ -781,6 +824,21 @@ function createUndoRecordsModal(undoRecords, onUndoClick) {
     }
 }
 
+// Single implementation shared by the identify page (bulk UI button) and the options
+// page. Previously duplicated in content.js and options.js.
+function showUndoRecordsModal() {
+    getUndoRecords(function(undoRecords) {
+        debugLog('Retrieved undo records:', undoRecords);
+        if (undoRecords.length === 0) {
+            alert('No undo records available.');
+            return;
+        }
+        // createUndoRecordsModal returns null if it throws while building.
+        const modal = createUndoRecordsModal(undoRecords);
+        if (modal) document.body.appendChild(modal);
+    });
+}
+
 function getUndoRecords(callback) {
     browserAPI.storage.local.get('undoRecords', function(result) {
         const records = result.undoRecords || [];
@@ -884,32 +942,116 @@ async function performSingleUndoAction(observationId, undoAction) {
             }    
             case 'removeAnnotation':
                 if (undoAction.uuid) {
+                    let deleted = false;
                     try {
                         const response = await makeAPIRequest(`/annotations/${undoAction.uuid}`, { method: 'DELETE' });
                         debugLog('Annotation deletion response:', response);
-                        return { success: true, action: 'removeAnnotation', message: 'Annotation removed successfully' };
+                        deleted = true;
                     } catch (error) {
-                        console.error('Error removing annotation:', error);
                         if (error.message && error.message.includes('HTTP error! status: 404')) {
                             debugLog('Annotation not found (404). It may have been already deleted.');
-                            return { success: true, action: 'removeAnnotation', message: 'Annotation already removed or not found' };
+                            deleted = true;
+                        } else {
+                            console.error('Error removing annotation:', error);
+                            return { success: false, error: safeErrorString(error) };
                         }
-                        return { success: false, error: safeErrorString(error) };
                     }
+
+                    // The action replaced an existing annotation, so deleting ours is only
+                    // half the undo — put the original value back, or the user silently
+                    // loses the annotation they had before the bulk action.
+                    if (deleted && undoAction.originalValueId) {
+                        try {
+                            await makeAPIRequest('/annotations', {
+                                method: 'POST',
+                                // makeAPIRequest only adds Authorization — a JSON body
+                                // needs its content type stated explicitly.
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    annotation: {
+                                        resource_type: 'Observation',
+                                        resource_id: observationId,
+                                        controlled_attribute_id: parseInt(undoAction.attributeId),
+                                        controlled_value_id: undoAction.originalValueId
+                                    }
+                                })
+                            });
+                            return {
+                                success: true,
+                                action: 'removeAnnotation',
+                                message: 'Annotation removed and previous value restored'
+                            };
+                        } catch (error) {
+                            // Someone may have re-annotated the attribute in the meantime,
+                            // in which case the POST conflicts. Our annotation is gone
+                            // either way, so report the partial outcome rather than failing.
+                            console.error('Error restoring original annotation:', error);
+                            return {
+                                success: true,
+                                action: 'removeAnnotation',
+                                message: `Annotation removed, but the previous value could not be restored: ${getCleanErrorMessage(error)}`
+                            };
+                        }
+                    }
+                    return { success: true, action: 'removeAnnotation', message: 'Annotation removed successfully' };
                 } else {
                     console.error('Annotation UUID not found for undo action');
                     return { success: false, error: 'Annotation UUID not found' };
                 }
-            case 'removeAnnotationVote':
+            case 'removeAnnotationVote': {
                 // No UUID means the original action was a no-op (no matching annotation existed)
                 // so there's no vote to remove.
                 if (!undoAction.uuid) {
                     return { success: true, action: 'removeAnnotationVote', message: 'No vote was recorded; nothing to undo' };
                 }
+
+                // We could not identify our own votes when the action ran (no user id), so
+                // we don't know whether this vote pre-dated it. Leave it: silently deleting
+                // a vote the user cast themselves is worse than an incomplete undo.
+                if (undoAction.priorVotesKnown === false) {
+                    debugLog('Leaving annotation vote in place: prior vote state was unknown');
+                    return {
+                        success: true,
+                        action: 'removeAnnotationVote',
+                        message: 'Vote left in place (could not confirm whether it pre-dated the action)'
+                    };
+                }
+
+                // priorVotes maps annotation uuid -> the vote_flag we had on it beforehand.
+                // Presence means a vote already existed on the annotation we voted on, so
+                // the action *changed* its direction rather than creating it; restore the
+                // original direction instead of withdrawing. Absence means we created the
+                // vote, so withdraw it.
+                const priorVotes = undoAction.priorVotes || {};
+                const hadPrior = Object.prototype.hasOwnProperty.call(priorVotes, undoAction.uuid);
+
+                if (hadPrior) {
+                    const priorFlag = priorVotes[undoAction.uuid];
+                    try {
+                        await makeAPIRequest(`/votes/vote/annotation/${undoAction.uuid}`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ vote: priorFlag })
+                        });
+                        return {
+                            success: true,
+                            action: 'removeAnnotationVote',
+                            message: `Restored the previous ${priorFlag ? 'agree' : 'disagree'} vote`
+                        };
+                    } catch (error) {
+                        console.error('Error restoring previous annotation vote:', error);
+                        return {
+                            success: true,
+                            action: 'removeAnnotationVote',
+                            message: `Could not restore the previous vote: ${getCleanErrorMessage(error)}`
+                        };
+                    }
+                }
+
                 try {
                     const response = await makeAPIRequest(`/votes/unvote/annotation/${undoAction.uuid}`, { method: 'DELETE' });
                     debugLog('Annotation vote removal response:', response);
-                    return { success: true, action: 'removeAnnotationVote', message: 'Annotation downvote removed' };
+                    return { success: true, action: 'removeAnnotationVote', message: 'Annotation vote withdrawn' };
                 } catch (error) {
                     console.error('Error removing annotation vote:', error);
                     if (error.message && error.message.includes('HTTP error! status: 404')) {
@@ -917,6 +1059,7 @@ async function performSingleUndoAction(observationId, undoAction) {
                     }
                     return { success: false, error: safeErrorString(error) };
                 }
+            }
             case 'updateObservationField':
                 // First, get the current state of the observation
                 const observationResponse = await makeAPIRequest(`/observations/${observationId}`);
@@ -1608,19 +1751,6 @@ async function getFieldValueDetails(observationId, fieldId) {
     }
 }
 
-function compareFieldValues(existingValue, newValue, datatype) {
-    if (!existingValue) return true; // No existing value means values are different
-
-    switch (datatype) {
-        case 'numeric':
-            return parseFloat(existingValue) !== parseFloat(newValue);
-        case 'date':
-        case 'datetime':
-            return new Date(existingValue).getTime() !== new Date(newValue).getTime();
-        default:
-            return existingValue !== newValue;
-    }
-}
 
 async function markObservationReviewed(observationId, markAsReviewed) {
     const jwt = await getJWT(); // Ensure the user is authenticated
@@ -1868,243 +1998,6 @@ async function performProjectAction(observationId, projectId, remove = false) {
 }
 
 
-function handleProjectActionResults(results, wasRemoval = false) {
-    debugLog('Raw results for project action summary:', results);
-    const summary = {
-        projectSuccess: [], // Observations where project action succeeded
-        projectSkipped: [], // Observations where project action was skipped (noActionNeeded)
-        projectFailed: [],  // Observations where project action failed
-        otherActionsSucceededForFailedProject: [], // Obs where project failed but other actions might have succeeded
-        warnings: [] // Warnings specifically from project action
-    };
-
-    // Group results by observationId
-    const resultsByObservation = results.reduce((acc, result) => {
-        acc[result.observationId] = acc[result.observationId] || [];
-        acc[result.observationId].push(result);
-        return acc;
-    }, {});
-
-    for (const observationId in resultsByObservation) {
-        const obsActions = resultsByObservation[observationId];
-        const projectActionResult = obsActions.find(r => r.action === 'addToProject' || (r.projectId && (r.explicitlyRemoved !== undefined || r.reason))); // find project-specific result
-
-        if (projectActionResult) {
-            if (projectActionResult.success) {
-                if (projectActionResult.noActionNeeded) {
-                    summary.projectSkipped.push({
-                        observationId,
-                        reason: projectActionResult.reason,
-                        message: projectActionResult.message
-                    });
-                } else {
-                    summary.projectSuccess.push({
-                        observationId,
-                        message: projectActionResult.message,
-                        additionUUID: projectActionResult.additionUUID,
-                        explicitlyRemoved: projectActionResult.explicitlyRemoved
-                    });
-                }
-            } else { // Project action failed or had warning
-                if (projectActionResult.requiresWarning) {
-                    summary.warnings.push({
-                        observationId,
-                        message: projectActionResult.message,
-                        reason: projectActionResult.reason
-                    });
-                }
-                // Even if it's a warning, if it's not a success, it's a failure in terms of project addition/removal
-                summary.projectFailed.push({
-                    observationId,
-                    message: projectActionResult.message,
-                    reason: projectActionResult.reason
-                });
-
-                // Check if other actions for this observation succeeded despite project failure
-                const otherSuccessfulActions = obsActions.filter(
-                    r => r.action !== 'addToProject' && r.success && r.action !== (wasRemoval ? 'removedFromProject' : 'addedToProject')
-                ).length > 0;
-
-                if (otherSuccessfulActions) {
-                    summary.otherActionsSucceededForFailedProject.push(observationId);
-                }
-            }
-        } else {
-            // This case should ideally not happen if this function is called for project actions
-            // But as a fallback, if an observation has results but no specific project action result,
-            // consider it a general failure for this summary.
-            console.warn(`Observation ${observationId} had results but no specific project action result.`);
-            summary.projectFailed.push({
-                observationId,
-                message: "Project action outcome unclear, but other actions processed.",
-                reason: "missing_project_result"
-            });
-        }
-    }
-    debugLog("Generated project summary:", summary);
-    return summary;
-}
-
-function createProjectActionResultsModal(summary, projectName, wasRemoval = false) {
-    const modal = document.createElement('div');
-    modal.style.cssText = `
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background-color: rgba(0, 0, 0, 0.5);
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        z-index: 10000;
-    `;
-
-    const content = document.createElement('div');
-    content.style.cssText = `
-        background-color: white;
-        padding: 20px;
-        border-radius: 5px;
-        max-width: 80%;
-        max-height: 80%;
-        overflow-y: auto;
-    `;
-
-    let contentHTML = `<h2>Project Action Results</h2>`;
-
-    const allInvolvedObsIds = new Set([
-        ...summary.projectSuccess.map(s => s.observationId),
-        ...summary.projectSkipped.map(s => s.observationId),
-        ...summary.projectFailed.map(f => f.observationId),
-        ...summary.warnings.map(w => w.observationId)
-    ]);
-
-    const fullySuccessfulObs = summary.projectSuccess.map(s => s.observationId);
-    const partiallySuccessfulObsIds = summary.otherActionsSucceededForFailedProject; // ObsIds where project failed/skipped but others OK
-
-    // --- Section for Fully Successful Observations (including project action) ---
-    if (fullySuccessfulObs.length > 0) {
-        contentHTML += `
-            <div style="margin: 15px 0;">
-                <h3>Project Action Successful (${fullySuccessfulObs.length} observations)</h3>
-                <p>The configured actions, including ${wasRemoval ? 'removal from' : 'addition to'} project "${escapeHtml(projectName)}", fully succeeded for:</p>
-                <div class="observation-list">
-                    ${generateObservationList(fullySuccessfulObs)}
-                </div>
-            </div>
-        `;
-    }
-    
-    // --- Section for Partially Successful Observations (Project failed/skipped, others OK) ---
-    if (partiallySuccessfulObsIds.length > 0) {
-         contentHTML += `
-            <div style="margin: 15px 0; padding: 10px; background: #e0f2f1; border-radius: 4px;">
-                <h3>Partial Success (${partiallySuccessfulObsIds.length} observations)</h3>
-                <p>For these observations, the specific project action failed or was skipped, BUT other configured actions succeeded:</p>
-                <div class="observation-list">
-                    ${generateObservationList(partiallySuccessfulObsIds)}
-                </div>
-                 <p><small>Details for the project action's outcome for these observations can be found in the 'Project Action Warnings' or 'Project Action Failed' sections below.</small></p>
-            </div>
-        `;
-    }
-
-    // --- Section for Project Action Skipped (and not a partial success) ---
-    // Filter out those already covered by partial success or full success.
-    const purelySkippedObsDetails = summary.projectSkipped.filter(s => 
-        !partiallySuccessfulObsIds.includes(s.observationId) && 
-        !fullySuccessfulObs.includes(s.observationId)
-    );
-    if (purelySkippedObsDetails.length > 0) {
-        contentHTML += `
-            <div style="margin: 15px 0; padding: 10px; background: #fff3e0; border-radius: 4px;">
-                <h3>Project Action Skipped (${purelySkippedObsDetails.length} observations)</h3>
-                <p>The project action was skipped (e.g., observation already in/not in project), and no other actions led to a 'Partial Success' status for these:</p>
-                <ul>
-                    ${purelySkippedObsDetails.map(skipped => `
-                        <li>
-                            <a href="${getINatSiteBase()}/observations/${encodeURIComponent(skipped.observationId)}"
-                               target="_blank" style="color: #0077cc; text-decoration: underline;">
-                                Observation ${escapeHtml(skipped.observationId)}
-                            </a>: ${escapeHtml(skipped.message || 'No action needed')} (${escapeHtml(skipped.reason || 'Skipped')})
-                        </li>
-                    `).join('')}
-                </ul>
-            </div>
-        `;
-    }
-    
-    // --- Section for Project Action Warnings ---
-    // This section should list ALL warnings, including those for partially successful observations.
-    if (summary.warnings.length > 0) {
-        contentHTML += `
-            <div style="margin: 15px 0; padding: 10px; background: #fff1f0; border-radius: 4px;">
-                <h3>Project Action Warnings (${summary.warnings.length})</h3>
-                <p>These warnings are specific to the project addition/removal action:</p>
-                <ul>
-                    ${summary.warnings.map(warning => `
-                        <li>
-                            <a href="${getINatSiteBase()}/observations/${encodeURIComponent(warning.observationId)}"
-                               target="_blank" style="color: #0077cc; text-decoration: underline;">
-                                Observation ${escapeHtml(warning.observationId)}
-                            </a>: ${escapeHtml(warning.message)}
-                            ${warning.reason === 'dynamic_inclusion' ? ' (Automatically included by project rules)' : ''}
-                            ${warning.reason === 'permission_denied' ? ' (Insufficient permissions)' : ''}
-                            ${partiallySuccessfulObsIds.includes(warning.observationId) ? ' <strong style="color: #00897b;">(Also listed under Partial Success)</strong>' : ''}
-                        </li>
-                    `).join('')}
-                </ul>
-            </div>
-        `;
-    }
-
-    // --- Section for Project Action Failed ---
-    // List all project failures, indicating if they were also "Partial Success" due to other actions.
-    // Exclude failures that are already covered *as the primary reason* in the warnings section if they have the same reason.
-    const failuresToList = summary.projectFailed.filter(f => 
-        !summary.warnings.some(w => w.observationId === f.observationId && w.reason === f.reason && w.message === f.message)
-    );
-
-    if (failuresToList.length > 0) {
-        contentHTML += `
-            <div style="margin: 15px 0; padding: 10px; background: #ffeded; border-radius: 4px;">
-                <h3>Project Action Failed (${failuresToList.length} observations)</h3>
-                 <p>The project addition/removal action failed for these observations:</p>
-                <p><a href="${getIdentifyPageUrl()}&id=${failuresToList.map(f => encodeURIComponent(f.observationId)).join(',')}"
-                      target="_blank" style="color: #0077cc; text-decoration: underline;">
-                    View these observations
-                </a></p>
-                <ul>
-                    ${failuresToList.map(failure => `
-                        <li>
-                            <a href="${getINatSiteBase()}/observations/${encodeURIComponent(failure.observationId)}"
-                               target="_blank" style="color: #0077cc; text-decoration: underline;">
-                                Observation ${escapeHtml(failure.observationId)}
-                            </a>:
-                            ${escapeHtml(getCleanErrorMessage(failure.message))}
-                            ${failure.reason ? `(${escapeHtml(failure.reason)})` : ''}
-                            ${partiallySuccessfulObsIds.includes(failure.observationId) ? ' <strong style="color: #00897b;">(Also listed under Partial Success)</strong>' : ''}
-                        </li>
-                    `).join('')}
-                </ul>
-            </div>
-        `;
-    }
-
-    contentHTML += `<button onclick="this.closest('.modal').remove()" class="modal-button">Close</button>`;
-    
-    content.innerHTML = contentHTML;
-    modal.appendChild(content);
-    modal.className = 'modal';
-
-    return modal;
-}
-
-function generateObservationList(observationIds) {
-    const url = generateObservationURL(observationIds);
-    return `<a href="${url}" target="_blank">View ${observationIds.length} observation${observationIds.length !== 1 ? 's' : ''}</a>`;
-}
-
 function getCleanErrorMessage(error) {
     const errorString = safeErrorString(error);
 
@@ -2135,7 +2028,8 @@ function summarizeBulkActionOutcomes(allActionResults, configuredActions) {
             success: [],
             failed: [],
             skipped: [], // For actions like project add/remove where 'noActionNeeded' is a distinct state
-            warnings: []  // For project-specific warnings
+            warnings: [],  // For project-specific warnings
+            downvoted: []  // Annotation ended up a downvote, not the configured value (#59)
         };
     });
 
@@ -2178,7 +2072,7 @@ function summarizeBulkActionOutcomes(allActionResults, configuredActions) {
                 if (!summaryByActionType[actionKey]) {
                      summaryByActionType[actionKey] = {
                         actionConfig: { type: result.action, name: "Unknown " + result.action },
-                        success: [], failed: [], skipped: [], warnings: []
+                        success: [], failed: [], skipped: [], warnings: [], downvoted: []
                      };
                 }
             }
@@ -2189,6 +2083,17 @@ function summarizeBulkActionOutcomes(allActionResults, configuredActions) {
                 if (result.success) {
                     if (result.noActionNeeded) { // Typically for project actions
                         summaryByActionType[actionKey].skipped.push(obsDetail);
+                    } else if (result.downvotedOnly) {
+                        // The API call succeeded but the configured annotation was never
+                        // added — a conflicting annotation existed and wasn't ours to
+                        // replace, so this only registered a downvote (#59). Reported
+                        // separately so it doesn't read as a clean success.
+                        summaryByActionType[actionKey].downvoted.push({
+                            ...obsDetail,
+                            attributeId: result.disagreedAttributeId,
+                            existingValueId: result.disagreedValueId,
+                            intendedValueId: result.intendedValueId
+                        });
                     } else {
                         summaryByActionType[actionKey].success.push(obsDetail);
                     }
@@ -2258,6 +2163,7 @@ function createDetailedActionResultsModal(summaryByActionType, actionSetName, sk
     for (const actionKey in summaryByActionType) {
         const actionSummary = summaryByActionType[actionKey];
         const { actionConfig, success, failed, skipped, warnings } = actionSummary;
+        const downvoted = actionSummary.downvoted || [];
 
         let actionDisplayName = actionConfig.type;
         if (actionConfig.type === 'observationField') {
@@ -2329,7 +2235,31 @@ function createDetailedActionResultsModal(summaryByActionType, actionSetName, sk
              }
         }
 
-        if (warnings.length > 0) { 
+        // Annotation disagreements (#59): the call succeeded but only as a downvote of a
+        // conflicting annotation, so the configured value was never applied. Listed in
+        // full (not capped at 10 like skipped/warnings) because each one is something
+        // the user may want to go act on individually.
+        if (downvoted.length > 0) {
+            const uniqueDownvotedIds = [...new Set(downvoted.map(d => d.observationId))];
+            contentHTML += `
+                <div style="margin: 10px 0; padding: 10px; background: #fff8e1; border: 1px solid #ffe082; border-radius: 4px;">
+                    <p style="margin-top:0; color: #a06a00;"><strong>Recorded as a downvote only</strong> for
+                       <a href="${generateObservationURL(uniqueDownvotedIds)}" target="_blank" style="color: #a06a00; text-decoration: underline;">${uniqueDownvotedIds.length} ${pluralize(uniqueDownvotedIds.length, "observation")}</a>.
+                       A conflicting annotation was already present and wasn't yours to replace, so the annotation you
+                       configured was <em>not</em> added.</p>
+                    <div style="max-height: 150px; overflow-y: auto;"><ul>`;
+            downvoted.forEach(d => {
+                const nameOr = (valueId) => {
+                    const n = getAnnotationValueName(d.attributeId, valueId);
+                    return n === 'Unknown' ? `value ${valueId}` : n;
+                };
+                const attrName = getAnnotationFieldName(d.attributeId);
+                contentHTML += `<li><a href="${getINatSiteBase()}/observations/${encodeURIComponent(d.observationId)}" target="_blank">${escapeHtml(d.observationId)}</a>: ${escapeHtml(attrName)} — wanted "${escapeHtml(nameOr(d.intendedValueId))}", downvoted existing "${escapeHtml(nameOr(d.existingValueId))}"</li>`;
+            });
+            contentHTML += `</ul></div></div>`;
+        }
+
+        if (warnings.length > 0) {
             const uniqueWarningIds = [...new Set(warnings.map(w => w.observationId))];
             contentHTML += `<p style="color: #c65102;">Warnings for <a href="${generateObservationURL(uniqueWarningIds)}" target="_blank" style="color: #c65102; text-decoration: underline;">${uniqueWarningIds.length} ${pluralize(uniqueWarningIds.length, "observation")}</a>:</p>`;
              if (uniqueWarningIds.length <= 10 && uniqueWarningIds.length > 0) { 
@@ -2345,7 +2275,7 @@ function createDetailedActionResultsModal(summaryByActionType, actionSetName, sk
              }
         }
         
-        if (success.length === 0 && failed.filter(f => f.reason !== 'safe_mode_skip').length === 0 && skipped.length === 0 && warnings.length === 0) {
+        if (success.length === 0 && failed.filter(f => f.reason !== 'safe_mode_skip').length === 0 && skipped.length === 0 && warnings.length === 0 && downvoted.length === 0) {
             contentHTML += `<p><em>No observations were processed or had issues for this specific action (they may have been skipped by Safe Mode overall).</em></p>`;
         }
 
