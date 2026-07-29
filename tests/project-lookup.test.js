@@ -20,6 +20,35 @@ describe('Project lookup and manual ID entry (#48)', () => {
         );
     });
 
+    describe('shared autocomplete selection is pre-blur-safe', () => {
+        const autocompleteBody = () => sharedApiJs.slice(
+            sharedApiJs.indexOf('function setupAutocompleteDropdown('),
+            sharedApiJs.indexOf('\nfunction ', sharedApiJs.indexOf('function setupAutocompleteDropdown(') + 1)
+        );
+
+        // This generic dropdown is separate from setupTaxonAutocomplete. The
+        // taxon dropdown was fixed in v3.3.5, but Observation Field, Project,
+        // Copy Observation Field and URL builder picks retained the same race:
+        // blur could hide a suggestion before its click handler ran.
+        test('selects suggestions on mousedown, not click', () => {
+            const body = autocompleteBody();
+            expect(body).toMatch(/suggestion\.addEventListener\(\s*['"]mousedown['"]/);
+            expect(body).not.toMatch(/suggestion\.addEventListener\(\s*['"]click['"]/);
+        });
+
+        test('prevents the input from blurring before selection', () => {
+            expect(autocompleteBody()).toMatch(/event\.preventDefault\(\)/);
+        });
+
+        test('still invokes the caller and fills the visible input', () => {
+            const body = autocompleteBody();
+            expect(body).toMatch(/onSelectFunction\(result, inputElement\)/);
+            expect(body).toMatch(
+                /inputElement\.value = result\.login \|\| result\.name \|\| result\.title/
+            );
+        });
+    });
+
     describe('lookupProject endpoint', () => {
         test('queries the /projects/autocomplete endpoint', () => {
             const body = sharedApiJs.slice(

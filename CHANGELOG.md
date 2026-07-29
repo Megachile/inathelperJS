@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.3.9] - 2026-07-28
+
+### Fixed
+- **Observation Field and Add to Project suggestions now populate reliably** (reported by @nyenyedzi) — their shared autocomplete still selected results on `click`, even though its blur handler can hide the dropdown before a slow click finishes. The earlier pre-blur fix covered only the separate Taxon ID autocomplete. Generic suggestions now select on `mousedown` with `preventDefault`, fixing Observation Field, Add to Project, both sides of Copy Observation Field, and the URL builder autocompletes that use the same helper.
+
 ## [3.3.8] - 2026-07-26
 
 ### Added

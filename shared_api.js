@@ -368,7 +368,13 @@ function setupAutocompleteDropdown(inputElement, lookupFunction, onSelectFunctio
                         if (result.usageCount !== undefined) {
                             suggestion.innerHTML += ` (${escapeHtml(result.usageCount)} uses)`;
                         }
-                        suggestion.addEventListener('click', () => {
+                        // Select before the input can blur. A click fires after
+                        // mousedown -> blur -> mouseup, so the blur teardown below
+                        // could hide the suggestion before a slow click completed.
+                        // This is the same race the taxon autocomplete already
+                        // avoids with mousedown + preventDefault.
+                        suggestion.addEventListener('mousedown', (event) => {
+                            event.preventDefault();
                             onSelectFunction(result, inputElement);
                             inputElement.value = result.login || result.name || result.title;
                             suggestionContainer.innerHTML = '';
