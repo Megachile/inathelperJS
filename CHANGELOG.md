@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.4.0] - 2026-08-01
+
+### Added
+- **The URL builder now covers iNaturalist's entire observation search API** — 44 filters that the API supports but no UI exposed. Under **Toggles**: Endemic, Out of Range, Expected Nearby, Taxon Is Active, Observation Licensed, Verifiable, Project Curator ID, ID Please, and all eight Data Quality Assessment vote filters (wild, evidence, date, location, accurate, recent, single subject, and "community ID cannot be improved"). Under **Additional Parameters**, grouped by topic: exact taxon rank, taxon name, IUCN status, conservation status code and authority, observation license, obscuration, hour of day, day and year for both observed and added dates, exact observed/added dates, updated-since, unobserved-by-user (the "lifers" filter), annotation author, user login, viewer, observation ID above/below/excluded, site, accuracy-below-or-unknown, accuracy experiment, observation field datatype, locale, and preferred place. Everything sits inside the existing collapsed sections, so the default view is unchanged.
+- **ID Agreement filter** in the URL builder — Most Agree, Some Agree or Most Disagree, describing how an observation's identifications relate to its displayed taxon. Combined with Needs ID and a Rank (High) of Species, this reliably finds observations whose community ID is coarser than the ID on the thumbnail.
+- **Annotation "or Unknown" option** in the URL builder — widens an annotation filter to also match observations that have no annotation at all for that field.
+- **The Agree action can now agree with the displayed ID** (#67, reported by @rcavasin) — previously it always agreed with the **community ID**, which on Needs ID observations is frequently a coarser taxon than the one shown on the observation thumbnail. Anyone expecting it to behave like iNaturalist's own agree button was quietly adding higher-level IDs. The action now offers an explicit choice between Community ID and Displayed ID, with an explanation of the difference on the options page. Existing buttons are unaffected and keep agreeing with the community ID.
+
+### Fixed
+- **Importing into a fresh install no longer leaves an empty "Default Set" behind** (#66) — a new installation creates an empty starter set, and importing a configuration file left that placeholder sitting alongside the imported sets. It is now removed once real sets arrive. A set you actually merged your import into is kept.
+- **Importing a file with no lists no longer asks you to approve importing them** (#66) — an export containing zero custom lists still opened the list-import approval dialog with nothing in it. The same applies to files with no configuration sets or buttons, and a file with nothing in it at all now says so plainly instead of reporting an invalid format.
+- **Radio buttons on the options page were spread across the row** — the Follow, Reviewed and new Agree options were being stretched by a rule intended for text inputs, which pushed each button away from its own label. They now sit tight against their labels, and the group keeps clear of the red Remove Action button so a low click no longer risks deleting the action.
+- **URL builder toggle labels no longer knock their buttons out of alignment** — the Any/Yes/No buttons now line up vertically down the list regardless of label length.
+
 ## [3.3.9] - 2026-07-28
 
 ### Fixed

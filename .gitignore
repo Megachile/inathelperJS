@@ -6,3 +6,6 @@ tests/
 jest.config.js
 package.json
 package-lock.json
+
+# Build artifacts (store zips are attached to GH releases, not committed)
+*.zip

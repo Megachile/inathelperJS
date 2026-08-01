@@ -370,6 +370,7 @@ function addField(type) {
             </select>
             <button class="removeFieldButton">Remove</button>
             <label><input type="checkbox" class="negationCheckbox"> Without</label>
+            <label data-tooltip="Also include observations that have no annotation at all for this field (term_id_or_unknown). Requires a value to be selected."><input type="checkbox" class="orUnknownCheckbox"> or Unknown</label>
             <span class="negationNote" style="display:none; color: #888; font-style: italic;">No value: selects obs. blank for this annotation. With value: selects obs. with other values, not blank.</span>
         `;
         // setupAnnotationDropdowns is called below after the field-group is
@@ -641,12 +642,28 @@ async function generateURL() {
     }
 
     // Handle toggles
-    const toggles = ['captive', 'sounds', 'photos', 'threatened', 'introduced', 'native', 'popular', 'identified', 'description', 'tags', 'geo', 'mappable'];
+    // Every entry here is a radio group named for its API param, with an 'any' option
+    // meaning "omit it". `identifications` is the one non-boolean member — it carries
+    // most_agree/some_agree/most_disagree instead of true/false, but the shape is the same.
+    const toggles = [
+        'captive', 'sounds', 'photos', 'threatened', 'introduced', 'native', 'popular',
+        'identified', 'description', 'tags', 'geo', 'mappable', 'identifications',
+        'endemic', 'out_of_range', 'expected_nearby', 'taxon_is_active', 'licensed',
+        'verifiable', 'pcid', 'id_please',
+        'fails_dqa_wild', 'fails_dqa_evidence', 'fails_dqa_date', 'fails_dqa_location',
+        'fails_dqa_accurate', 'fails_dqa_recent', 'fails_dqa_subject', 'fails_dqa_needs_id'
+    ];
 
     toggles.forEach(toggle => {
-        const selectedValue = document.querySelector(`input[name="${toggle}"]:checked`).value;
-        if (selectedValue !== 'any') {
-            params.push(`${toggle}=${selectedValue}`);
+        // Guarded: a name in this list with no matching markup (or a group with nothing
+        // checked) would otherwise throw and take the whole URL build down with it.
+        const checked = document.querySelector(`input[name="${toggle}"]:checked`);
+        if (!checked) {
+            console.warn(`URL builder: no checked option for toggle "${toggle}"`);
+            return;
+        }
+        if (checked.value !== 'any') {
+            params.push(`${toggle}=${checked.value}`);
         }
     });
     
@@ -775,17 +792,25 @@ async function generateURL() {
             const valueSelect = box.querySelector('.annotationValue');
             const negated = box.querySelector('.negationCheckbox').checked;
             
+            const orUnknownBox = box.querySelector('.orUnknownCheckbox');
+            const hasValue = valueSelect && valueSelect.value;
+            // term_id_or_unknown widens term_id to also match observations with no
+            // annotation for the field. iNat requires it to be paired with a value
+            // (term_value_id or without_term_value_id), so it only applies when one is set.
+            const orUnknown = orUnknownBox && orUnknownBox.checked && hasValue;
+            const termParam = orUnknown ? 'term_id_or_unknown' : 'term_id';
+
             if (fieldSelect && fieldSelect.value) {
                 if (negated) {
-                    if (valueSelect && valueSelect.value) {
-                        params.push(`term_id=${encodeURIComponent(fieldSelect.value)}`);
+                    if (hasValue) {
+                        params.push(`${termParam}=${encodeURIComponent(fieldSelect.value)}`);
                         params.push(`without_term_value_id=${encodeURIComponent(valueSelect.value)}`);
                     } else {
                         params.push(`without_term_id=${encodeURIComponent(fieldSelect.value)}`);
                     }
                 } else {
-                    params.push(`term_id=${encodeURIComponent(fieldSelect.value)}`);
-                    if (valueSelect && valueSelect.value) {
+                    params.push(`${termParam}=${encodeURIComponent(fieldSelect.value)}`);
+                    if (hasValue) {
                         params.push(`term_value_id=${encodeURIComponent(valueSelect.value)}`);
                     }
                 }
@@ -833,6 +858,60 @@ async function generateURL() {
     if (soundLicenses.length > 0) {
         params.push(`sound_license=${soundLicenses.join(',')}`);
     }
+
+    // --- Additional Parameters -------------------------------------------------
+    // Multi-value enums: comma-joined, omitted when nothing is ticked. These use
+    // per-option ids so the generic saveInputs/restore loop picks them up for free.
+    [
+        ['#rankFilter', 'rank'],
+        ['#csiFilter', 'csi'],
+        ['#obsLicenses', 'license'],
+        ['#obscurationFilter', 'obscuration']
+    ].forEach(([selector, param]) => {
+        const values = Array.from(document.querySelectorAll(`${selector} input:checked`))
+            .map(input => input.value);
+        if (values.length > 0) {
+            params.push(`${param}=${values.map(encodeURIComponent).join(',')}`);
+        }
+    });
+
+    // Single-value text, number, date and select inputs. Blank means "don't filter".
+    [
+        ['taxonNameInput', 'taxon_name'],
+        ['csInput', 'cs'],
+        ['csaInput', 'csa'],
+        ['hourInput', 'hour'],
+        ['dayInput', 'day'],
+        ['yearInput', 'year'],
+        ['observedOnInput', 'observed_on'],
+        ['createdDayInput', 'created_day'],
+        ['createdYearInput', 'created_year'],
+        ['createdOnInput', 'created_on'],
+        ['updatedSinceInput', 'updated_since'],
+        ['unobservedByUserInput', 'unobserved_by_user_id'],
+        ['annotationUserInput', 'annotation_user_id'],
+        ['userLoginInput', 'user_login'],
+        ['viewerIdInput', 'viewer_id'],
+        ['idAboveInput', 'id_above'],
+        ['idBelowInput', 'id_below'],
+        ['notIdInput', 'not_id'],
+        ['siteIdInput', 'site_id'],
+        ['accBelowOrUnknownInput', 'acc_below_or_unknown'],
+        ['accuracyExperimentInput', 'observation_accuracy_experiment_id'],
+        ['ofvDatatypeSelect', 'ofv_datatype'],
+        ['localeInput', 'locale'],
+        ['preferredPlaceInput', 'preferred_place_id']
+    ].forEach(([id, param]) => {
+        const el = document.getElementById(id);
+        if (!el) {
+            console.warn(`URL builder: missing input "${id}" for param "${param}"`);
+            return;
+        }
+        const value = el.value.trim();
+        if (value) {
+            params.push(`${param}=${encodeURIComponent(value)}`);
+        }
+    });
 
       // Sorting
       const sortBy = document.getElementById('sortBy').value;

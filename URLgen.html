@@ -274,6 +274,184 @@
                 </div>
               </div>
 
+              <p class="filter-subhead">Taxon &amp; Status</p>
+              <div>
+                <label data-tooltip="Taxon must be exactly one of these ranks. Independent of the Rank High/Low range under Sorting &amp; Ranking; setting both narrows to their overlap.">Exact Rank(s):</label>
+                <div id="rankFilter" class="checkbox-grid">
+                  <label><input type="checkbox" id="rankFilter-stateofmatter" name="rank" value="stateofmatter"> Stateofmatter</label>
+                  <label><input type="checkbox" id="rankFilter-kingdom" name="rank" value="kingdom"> Kingdom</label>
+                  <label><input type="checkbox" id="rankFilter-phylum" name="rank" value="phylum"> Phylum</label>
+                  <label><input type="checkbox" id="rankFilter-subphylum" name="rank" value="subphylum"> Subphylum</label>
+                  <label><input type="checkbox" id="rankFilter-superclass" name="rank" value="superclass"> Superclass</label>
+                  <label><input type="checkbox" id="rankFilter-class" name="rank" value="class"> Class</label>
+                  <label><input type="checkbox" id="rankFilter-subclass" name="rank" value="subclass"> Subclass</label>
+                  <label><input type="checkbox" id="rankFilter-superorder" name="rank" value="superorder"> Superorder</label>
+                  <label><input type="checkbox" id="rankFilter-order" name="rank" value="order"> Order</label>
+                  <label><input type="checkbox" id="rankFilter-suborder" name="rank" value="suborder"> Suborder</label>
+                  <label><input type="checkbox" id="rankFilter-infraorder" name="rank" value="infraorder"> Infraorder</label>
+                  <label><input type="checkbox" id="rankFilter-superfamily" name="rank" value="superfamily"> Superfamily</label>
+                  <label><input type="checkbox" id="rankFilter-epifamily" name="rank" value="epifamily"> Epifamily</label>
+                  <label><input type="checkbox" id="rankFilter-family" name="rank" value="family"> Family</label>
+                  <label><input type="checkbox" id="rankFilter-subfamily" name="rank" value="subfamily"> Subfamily</label>
+                  <label><input type="checkbox" id="rankFilter-supertribe" name="rank" value="supertribe"> Supertribe</label>
+                  <label><input type="checkbox" id="rankFilter-tribe" name="rank" value="tribe"> Tribe</label>
+                  <label><input type="checkbox" id="rankFilter-subtribe" name="rank" value="subtribe"> Subtribe</label>
+                  <label><input type="checkbox" id="rankFilter-genus" name="rank" value="genus"> Genus</label>
+                  <label><input type="checkbox" id="rankFilter-genushybrid" name="rank" value="genushybrid"> Genushybrid</label>
+                  <label><input type="checkbox" id="rankFilter-species" name="rank" value="species"> Species</label>
+                  <label><input type="checkbox" id="rankFilter-hybrid" name="rank" value="hybrid"> Hybrid</label>
+                  <label><input type="checkbox" id="rankFilter-subspecies" name="rank" value="subspecies"> Subspecies</label>
+                  <label><input type="checkbox" id="rankFilter-variety" name="rank" value="variety"> Variety</label>
+                  <label><input type="checkbox" id="rankFilter-form" name="rank" value="form"> Form</label>
+                </div>
+              </div>
+              <div>
+                <label for="taxonNameInput" data-tooltip="Taxon must have a scientific or common name matching this string. Comma-separate for multiple.">Taxon Name:</label>
+                <input type="text" id="taxonNameInput" placeholder="e.g. Quercus, oak">
+              </div>
+              <div>
+                <label data-tooltip="Taxon must have one of these IUCN conservation statuses. Combine with a Place to scope it regionally.">IUCN Status:</label>
+                <div id="csiFilter" class="checkbox-grid">
+                  <label><input type="checkbox" id="csiFilter-LC" name="csi" value="LC"> Least Concern</label>
+                  <label><input type="checkbox" id="csiFilter-NT" name="csi" value="NT"> Near Threatened</label>
+                  <label><input type="checkbox" id="csiFilter-VU" name="csi" value="VU"> Vulnerable</label>
+                  <label><input type="checkbox" id="csiFilter-EN" name="csi" value="EN"> Endangered</label>
+                  <label><input type="checkbox" id="csiFilter-CR" name="csi" value="CR"> Critically Endangered</label>
+                  <label><input type="checkbox" id="csiFilter-EW" name="csi" value="EW"> Extinct in the Wild</label>
+                  <label><input type="checkbox" id="csiFilter-EX" name="csi" value="EX"> Extinct</label>
+                </div>
+              </div>
+              <div>
+                <label for="csInput" data-tooltip="Taxon must have this conservation status code. Codes are authority-specific and case-insensitive; EN, VU, CR and NT are widely populated. Combine with a Place to scope it regionally.">Conservation Status Code:</label>
+                <input type="text" id="csInput" placeholder="e.g. EN">
+              </div>
+              <div>
+                <label for="csaInput" data-tooltip="Taxon must have a conservation status from this authority, case-insensitive. Use the IUCN Status boxes above for IUCN itself; this is for other authorities such as natureserve.">Conservation Status Authority:</label>
+                <input type="text" id="csaInput" placeholder="e.g. natureserve">
+              </div>
+
+              <p class="filter-subhead">Licensing &amp; Obscuration</p>
+              <div>
+                <label data-tooltip="License on the observation record itself, as opposed to the photo and sound licenses above.">Observation License:</label>
+                <div id="obsLicenses" class="checkbox-grid">
+                  <label><input type="checkbox" id="obsLicenses-cc0" name="license" value="cc0"> CC0</label>
+                  <label><input type="checkbox" id="obsLicenses-cc-by" name="license" value="cc-by"> CC-BY</label>
+                  <label><input type="checkbox" id="obsLicenses-cc-by-sa" name="license" value="cc-by-sa"> CC-BY-SA</label>
+                  <label><input type="checkbox" id="obsLicenses-cc-by-nc" name="license" value="cc-by-nc"> CC-BY-NC</label>
+                  <label><input type="checkbox" id="obsLicenses-cc-by-nd" name="license" value="cc-by-nd"> CC-BY-ND</label>
+                  <label><input type="checkbox" id="obsLicenses-cc-by-nc-sa" name="license" value="cc-by-nc-sa"> CC-BY-NC-SA</label>
+                  <label><input type="checkbox" id="obsLicenses-cc-by-nc-nd" name="license" value="cc-by-nc-nd"> CC-BY-NC-ND</label>
+                </div>
+              </div>
+              <div>
+                <label data-tooltip="Matches the geoprivacy or taxon geoprivacy on the observation.">Obscuration:</label>
+                <div id="obscurationFilter" class="checkbox-grid">
+                  <label><input type="checkbox" id="obscurationFilter-obscured" name="obscuration" value="obscured"> Obscured</label>
+                  <label><input type="checkbox" id="obscurationFilter-private" name="obscuration" value="private"> Private</label>
+                  <label><input type="checkbox" id="obscurationFilter-none" name="obscuration" value="none"> None</label>
+                </div>
+              </div>
+
+              <p class="filter-subhead">Time of Day &amp; Calendar</p>
+              <div>
+                <label for="hourInput" data-tooltip="Observed within these hours (0-23). Comma-separate for multiple.">Hour of Day:</label>
+                <input type="text" id="hourInput" placeholder="e.g. 6,7,8">
+              </div>
+              <div>
+                <label for="dayInput" data-tooltip="Observed on these days of the month (1-31). Comma-separate for multiple.">Day of Month (observed):</label>
+                <input type="text" id="dayInput" placeholder="e.g. 1,15">
+              </div>
+              <div>
+                <label for="yearInput" data-tooltip="Observed in these years. Comma-separate for multiple. Note: the Date section year range emits d1/d2 instead, so setting both narrows to their overlap.">Year (observed):</label>
+                <input type="text" id="yearInput" placeholder="e.g. 2023,2024">
+              </div>
+              <div>
+                <label for="observedOnInput" data-tooltip="Must be observed on this exact date.">Observed On (exact date):</label>
+                <input type="date" id="observedOnInput" placeholder="">
+              </div>
+              <div>
+                <label for="createdDayInput" data-tooltip="Added on these days of the month (1-31). Comma-separate for multiple.">Day of Month (added):</label>
+                <input type="text" id="createdDayInput" placeholder="e.g. 1,15">
+              </div>
+              <div>
+                <label for="createdYearInput" data-tooltip="Added in these years. Comma-separate for multiple.">Year (added):</label>
+                <input type="text" id="createdYearInput" placeholder="e.g. 2024">
+              </div>
+              <div>
+                <label for="createdOnInput" data-tooltip="Must have been added to iNat on this exact date.">Added On (exact date):</label>
+                <input type="date" id="createdOnInput" placeholder="">
+              </div>
+              <div>
+                <label for="updatedSinceInput" data-tooltip="Must have been updated at or after this time (ISO 8601).">Updated Since:</label>
+                <input type="text" id="updatedSinceInput" placeholder="e.g. 2024-01-01T00:00:00Z">
+              </div>
+
+              <p class="filter-subhead">People</p>
+              <div>
+                <label for="unobservedByUserInput" data-tooltip="Exclude taxa this user has already observed, i.e. the lifers-for-someone filter. Numeric user ID.">Unobserved By User ID:</label>
+                <input type="number" id="unobservedByUserInput" placeholder="e.g. 12345">
+              </div>
+              <div>
+                <label for="annotationUserInput" data-tooltip="Must have an annotation created by this user. Comma-separate for multiple IDs.">Annotation By User ID:</label>
+                <input type="text" id="annotationUserInput" placeholder="e.g. 12345">
+              </div>
+              <div>
+                <label for="userLoginInput" data-tooltip="Observer must have this login. Comma-separate for multiple.">User Login:</label>
+                <input type="text" id="userLoginInput" placeholder="e.g. megachile">
+              </div>
+              <div>
+                <label for="viewerIdInput" data-tooltip="User ID whose reviewed state the Reviewed filter applies to. Defaults to you.">Viewer ID:</label>
+                <input type="number" id="viewerIdInput" placeholder="e.g. 12345">
+              </div>
+
+              <p class="filter-subhead">Record &amp; Site</p>
+              <div>
+                <label for="idAboveInput" data-tooltip="Observation ID must be greater than this value.">Observation ID Above:</label>
+                <input type="number" id="idAboveInput" placeholder="">
+              </div>
+              <div>
+                <label for="idBelowInput" data-tooltip="Observation ID must be less than this value.">Observation ID Below:</label>
+                <input type="number" id="idBelowInput" placeholder="">
+              </div>
+              <div>
+                <label for="notIdInput" data-tooltip="Must not have these observation IDs. Comma-separate for multiple.">Exclude Observation IDs:</label>
+                <input type="text" id="notIdInput" placeholder="e.g. 12345,67890">
+              </div>
+              <div>
+                <label for="siteIdInput" data-tooltip="Must be affiliated with the iNaturalist network site with this ID.">Site ID:</label>
+                <input type="number" id="siteIdInput" placeholder="">
+              </div>
+              <div>
+                <label for="accBelowOrUnknownInput" data-tooltip="Positional accuracy is below this value in meters, or is unknown.">Accuracy Below or Unknown (m):</label>
+                <input type="number" id="accBelowOrUnknownInput" placeholder="">
+              </div>
+              <div>
+                <label for="accuracyExperimentInput" data-tooltip="Must be included in this observation accuracy experiment.">Accuracy Experiment ID:</label>
+                <input type="number" id="accuracyExperimentInput" placeholder="">
+              </div>
+              <div>
+                <label for="ofvDatatypeSelect" data-tooltip="Must have an observation field value of this datatype.">Observation Field Datatype:</label>
+                <select id="ofvDatatypeSelect">
+                  <option value="">Any</option>
+                  <option value="text">Text</option>
+                  <option value="numeric">Numeric</option>
+                  <option value="date">Date</option>
+                  <option value="time">Time</option>
+                  <option value="datetime">Datetime</option>
+                  <option value="taxon">Taxon</option>
+                  <option value="dna">Dna</option>
+                  <option value="boolean">Boolean</option>
+                </select>
+              </div>
+              <div>
+                <label for="localeInput" data-tooltip="Locale preference for taxon common names in the results.">Locale:</label>
+                <input type="text" id="localeInput" placeholder="e.g. en">
+              </div>
+              <div>
+                <label for="preferredPlaceInput" data-tooltip="Place preference for regional taxon common names in the results.">Preferred Place ID:</label>
+                <input type="number" id="preferredPlaceInput" placeholder="">
+              </div>
+
             </fieldset>
           </div>
 
@@ -362,6 +540,18 @@
             </div>
 
             <div class="toggle-group">
+              <label data-tooltip="How the identifications relate to the observation's displayed taxon. Most Agree: most IDs match it. Some Agree: at least one does. Most Disagree: most IDs disagree with it. Only one may be selected — iNat ignores comma-separated values here.">ID Agreement:</label>
+              <input type="radio" id="identifications-any" name="identifications" value="any" checked>
+              <label for="identifications-any">Any</label>
+              <input type="radio" id="identifications-most-agree" name="identifications" value="most_agree">
+              <label for="identifications-most-agree">Most Agree</label>
+              <input type="radio" id="identifications-some-agree" name="identifications" value="some_agree">
+              <label for="identifications-some-agree">Some Agree</label>
+              <input type="radio" id="identifications-most-disagree" name="identifications" value="most_disagree">
+              <label for="identifications-most-disagree">Most Disagree</label>
+            </div>
+
+            <div class="toggle-group">
               <label>Has Description:</label>
               <input type="radio" id="description-any" name="description" value="any" checked>
               <label for="description-any">Any</label>
@@ -399,6 +589,168 @@
               <label for="mappable-yes">Yes</label>
               <input type="radio" id="mappable-no" name="mappable" value="false">
               <label for="mappable-no">No</label>
+            </div>
+
+            <div class="toggle-group">
+              <label for="endemic" data-tooltip="Observations whose taxa are endemic to their location">Endemic</label>
+              <input type="radio" id="endemic-any" name="endemic" value="any" checked>
+              <label for="endemic-any">Any</label>
+              <input type="radio" id="endemic-yes" name="endemic" value="true">
+              <label for="endemic-yes">Yes</label>
+              <input type="radio" id="endemic-no" name="endemic" value="false">
+              <label for="endemic-no">No</label>
+            </div>
+
+            <div class="toggle-group">
+              <label for="out_of_range" data-tooltip="Observations whose taxa are outside their known ranges">Out of Range</label>
+              <input type="radio" id="out-of-range-any" name="out_of_range" value="any" checked>
+              <label for="out-of-range-any">Any</label>
+              <input type="radio" id="out-of-range-yes" name="out_of_range" value="true">
+              <label for="out-of-range-yes">Yes</label>
+              <input type="radio" id="out-of-range-no" name="out_of_range" value="false">
+              <label for="out-of-range-no">No</label>
+            </div>
+
+            <div class="toggle-group">
+              <label for="expected_nearby" data-tooltip="Observation taxon is expected to occur nearby">Expected Nearby</label>
+              <input type="radio" id="expected-nearby-any" name="expected_nearby" value="any" checked>
+              <label for="expected-nearby-any">Any</label>
+              <input type="radio" id="expected-nearby-yes" name="expected_nearby" value="true">
+              <label for="expected-nearby-yes">Yes</label>
+              <input type="radio" id="expected-nearby-no" name="expected_nearby" value="false">
+              <label for="expected-nearby-no">No</label>
+            </div>
+
+            <div class="toggle-group">
+              <label for="taxon_is_active" data-tooltip="Observations of active taxon concepts (excludes taxa that have been swapped or deactivated)">Taxon Is Active</label>
+              <input type="radio" id="taxon-is-active-any" name="taxon_is_active" value="any" checked>
+              <label for="taxon-is-active-any">Any</label>
+              <input type="radio" id="taxon-is-active-yes" name="taxon_is_active" value="true">
+              <label for="taxon-is-active-yes">Yes</label>
+              <input type="radio" id="taxon-is-active-no" name="taxon_is_active" value="false">
+              <label for="taxon-is-active-no">No</label>
+            </div>
+
+            <div class="toggle-group">
+              <label for="licensed" data-tooltip="The observation record itself has a license set (distinct from the photo/sound licenses above)">Observation Licensed</label>
+              <input type="radio" id="licensed-any" name="licensed" value="any" checked>
+              <label for="licensed-any">Any</label>
+              <input type="radio" id="licensed-yes" name="licensed" value="true">
+              <label for="licensed-yes">Yes</label>
+              <input type="radio" id="licensed-no" name="licensed" value="false">
+              <label for="licensed-no">No</label>
+            </div>
+
+            <div class="toggle-group">
+              <label for="verifiable" data-tooltip="Quality grade is Needs ID or Research Grade. Equivalent to checking both of those boxes and unchecking Casual">Verifiable</label>
+              <input type="radio" id="verifiable-any" name="verifiable" value="any" checked>
+              <label for="verifiable-any">Any</label>
+              <input type="radio" id="verifiable-yes" name="verifiable" value="true">
+              <label for="verifiable-yes">Yes</label>
+              <input type="radio" id="verifiable-no" name="verifiable" value="false">
+              <label for="verifiable-no">No</label>
+            </div>
+
+            <div class="toggle-group">
+              <label for="pcid" data-tooltip="Identified by a curator of the project. Only meaningful when a Project is also set">Project Curator ID</label>
+              <input type="radio" id="pcid-any" name="pcid" value="any" checked>
+              <label for="pcid-any">Any</label>
+              <input type="radio" id="pcid-yes" name="pcid" value="true">
+              <label for="pcid-yes">Yes</label>
+              <input type="radio" id="pcid-no" name="pcid" value="false">
+              <label for="pcid-no">No</label>
+            </div>
+
+            <div class="toggle-group">
+              <label for="id_please" data-tooltip="Observations with the deprecated 'ID, Please!' flag. iNat notes this also returns observations that merely have IDs">ID Please (deprecated)</label>
+              <input type="radio" id="id-please-any" name="id_please" value="any" checked>
+              <label for="id-please-any">Any</label>
+              <input type="radio" id="id-please-yes" name="id_please" value="true">
+              <label for="id-please-yes">Yes</label>
+              <input type="radio" id="id-please-no" name="id_please" value="false">
+              <label for="id-please-no">No</label>
+            </div>
+
+            <p class="filter-subhead">Data Quality Assessment votes</p>
+
+            <div class="toggle-group">
+              <label for="fails_dqa_wild" data-tooltip="Voted as not wild / captive">Fails DQA: Wild</label>
+              <input type="radio" id="fails-dqa-wild-any" name="fails_dqa_wild" value="any" checked>
+              <label for="fails-dqa-wild-any">Any</label>
+              <input type="radio" id="fails-dqa-wild-yes" name="fails_dqa_wild" value="true">
+              <label for="fails-dqa-wild-yes">Yes</label>
+              <input type="radio" id="fails-dqa-wild-no" name="fails_dqa_wild" value="false">
+              <label for="fails-dqa-wild-no">No</label>
+            </div>
+
+            <div class="toggle-group">
+              <label for="fails_dqa_evidence" data-tooltip="Voted as not evidence of an organism">Fails DQA: Evidence</label>
+              <input type="radio" id="fails-dqa-evidence-any" name="fails_dqa_evidence" value="any" checked>
+              <label for="fails-dqa-evidence-any">Any</label>
+              <input type="radio" id="fails-dqa-evidence-yes" name="fails_dqa_evidence" value="true">
+              <label for="fails-dqa-evidence-yes">Yes</label>
+              <input type="radio" id="fails-dqa-evidence-no" name="fails_dqa_evidence" value="false">
+              <label for="fails-dqa-evidence-no">No</label>
+            </div>
+
+            <div class="toggle-group">
+              <label for="fails_dqa_date" data-tooltip="Voted as not having an accurate date">Fails DQA: Date</label>
+              <input type="radio" id="fails-dqa-date-any" name="fails_dqa_date" value="any" checked>
+              <label for="fails-dqa-date-any">Any</label>
+              <input type="radio" id="fails-dqa-date-yes" name="fails_dqa_date" value="true">
+              <label for="fails-dqa-date-yes">Yes</label>
+              <input type="radio" id="fails-dqa-date-no" name="fails_dqa_date" value="false">
+              <label for="fails-dqa-date-no">No</label>
+            </div>
+
+            <div class="toggle-group">
+              <label for="fails_dqa_location" data-tooltip="Voted as not having an accurate location">Fails DQA: Location</label>
+              <input type="radio" id="fails-dqa-location-any" name="fails_dqa_location" value="any" checked>
+              <label for="fails-dqa-location-any">Any</label>
+              <input type="radio" id="fails-dqa-location-yes" name="fails_dqa_location" value="true">
+              <label for="fails-dqa-location-yes">Yes</label>
+              <input type="radio" id="fails-dqa-location-no" name="fails_dqa_location" value="false">
+              <label for="fails-dqa-location-no">No</label>
+            </div>
+
+            <div class="toggle-group">
+              <label for="fails_dqa_accurate" data-tooltip="Voted as not accurately depicting an organism or scene">Fails DQA: Accurate</label>
+              <input type="radio" id="fails-dqa-accurate-any" name="fails_dqa_accurate" value="any" checked>
+              <label for="fails-dqa-accurate-any">Any</label>
+              <input type="radio" id="fails-dqa-accurate-yes" name="fails_dqa_accurate" value="true">
+              <label for="fails-dqa-accurate-yes">Yes</label>
+              <input type="radio" id="fails-dqa-accurate-no" name="fails_dqa_accurate" value="false">
+              <label for="fails-dqa-accurate-no">No</label>
+            </div>
+
+            <div class="toggle-group">
+              <label for="fails_dqa_recent" data-tooltip="Voted as not recent evidence of an organism">Fails DQA: Recent</label>
+              <input type="radio" id="fails-dqa-recent-any" name="fails_dqa_recent" value="any" checked>
+              <label for="fails-dqa-recent-any">Any</label>
+              <input type="radio" id="fails-dqa-recent-yes" name="fails_dqa_recent" value="true">
+              <label for="fails-dqa-recent-yes">Yes</label>
+              <input type="radio" id="fails-dqa-recent-no" name="fails_dqa_recent" value="false">
+              <label for="fails-dqa-recent-no">No</label>
+            </div>
+
+            <div class="toggle-group">
+              <label for="fails_dqa_subject" data-tooltip="Voted as not having evidence related to a single subject">Fails DQA: Single Subject</label>
+              <input type="radio" id="fails-dqa-subject-any" name="fails_dqa_subject" value="any" checked>
+              <label for="fails-dqa-subject-any">Any</label>
+              <input type="radio" id="fails-dqa-subject-yes" name="fails_dqa_subject" value="true">
+              <label for="fails-dqa-subject-yes">Yes</label>
+              <input type="radio" id="fails-dqa-subject-no" name="fails_dqa_subject" value="false">
+              <label for="fails-dqa-subject-no">No</label>
+            </div>
+
+            <div class="toggle-group">
+              <label for="fails_dqa_needs_id" data-tooltip="Voted as 'the community ID cannot be improved'">Fails DQA: Can't Improve</label>
+              <input type="radio" id="fails-dqa-needs-id-any" name="fails_dqa_needs_id" value="any" checked>
+              <label for="fails-dqa-needs-id-any">Any</label>
+              <input type="radio" id="fails-dqa-needs-id-yes" name="fails_dqa_needs_id" value="true">
+              <label for="fails-dqa-needs-id-yes">Yes</label>
+              <input type="radio" id="fails-dqa-needs-id-no" name="fails_dqa_needs_id" value="false">
+              <label for="fails-dqa-needs-id-no">No</label>
             </div>
 
           </fieldset>

@@ -1313,7 +1313,11 @@ async function addTaxonId(observationId, taxonId, comment = '', disagreement = f
 // the observation's current community (or leading) taxon. Unlike addTaxonId, the
 // target taxon isn't known at config time; it's resolved per-observation here at
 // run time, since a bulk selection can span many different community taxa.
-async function agreeWithObservation(observationId) {
+// agreeTarget: 'community' (the consensus taxon, the historical default) or 'displayed'
+// (observation.taxon — what iNat shows on the thumbnail, and what iNat's own agree button
+// uses). On Needs ID observations these routinely differ, and agreeing with the wrong one
+// silently posts a coarser ID than the user intended (#67).
+async function agreeWithObservation(observationId, agreeTarget = 'community') {
     if (!observationId) {
         debugLog('No observation ID provided for agree.');
         return { success: false, error: 'No observation ID provided' };
@@ -1333,12 +1337,16 @@ async function agreeWithObservation(observationId) {
             return { success: false, error: 'Observation not found' };
         }
 
-        // Agree with the community taxon when one exists; otherwise fall back to the
-        // observation's leading taxon (single-ID observations have no community taxon).
-        const targetTaxonId = observation.community_taxon_id || observation.taxon?.id;
+        // Prefer the configured target, falling back to the other one when it is missing
+        // (a single-ID observation has no community taxon).
+        const communityTaxonId = observation.community_taxon_id;
+        const displayedTaxonId = observation.taxon?.id;
+        const targetTaxonId = agreeTarget === 'displayed'
+            ? (displayedTaxonId || communityTaxonId)
+            : (communityTaxonId || displayedTaxonId);
         if (!targetTaxonId) {
-            debugLog(`Obs ${observationId} has no community/leading taxon to agree with. Skipping.`);
-            return { success: true, message: 'No community or leading ID to agree with', noActionNeeded: true };
+            debugLog(`Obs ${observationId} has no community/displayed taxon to agree with. Skipping.`);
+            return { success: true, message: 'No community or displayed ID to agree with', noActionNeeded: true };
         }
 
         // Skip if the user already has a current identification at this taxon —
@@ -2304,7 +2312,7 @@ async function performSingleAction(action, observationId) {
                 identificationUUID: idResult.identificationUUID
             };
         case 'agreeId':
-            return agreeWithObservation(observationId);
+            return agreeWithObservation(observationId, action.agreeTarget);
         case 'qualityMetric':
             return handleQualityMetricAPI(observationId, action.metric, action.vote);
         case 'addToList':
@@ -4037,11 +4045,14 @@ async function executeBulkAction(selectedActionConfig, modal, isCancelledFunc) {
         );
         document.body.appendChild(resultsModal);
 
-        // If auto-refresh is enabled, refresh after 2 seconds
+        // If auto-refresh is enabled, reload once the grid has actually caught up
+        // rather than after a fixed guess — same wait the "Close and Refresh" button
+        // uses, so the two paths can't diverge again (#64).
         if (autoRefreshAfterBulk) {
-            setTimeout(() => {
+            waitForGridToSettle(uniqueSuccessfulObsIds).then((outcome) => {
+                debugLog(`auto-refresh grid settle: ${outcome.reason} after ${outcome.ms}ms`);
                 window.location.reload();
-            }, 2000);
+            });
         }
 
         return { results: allActionResults, skippedObservations: skippedObservationsDueToSafeMode, overwrittenValues, errorMessages };
@@ -4944,7 +4955,7 @@ function updateActionDescription(actionSelect) {
                         actionDesc = `Withdraw your current identification`;
                         break;
                     case 'agreeId' :
-                        actionDesc = `Agree with the community ID`;
+                        actionDesc = `Agree with the ${action.agreeTarget === 'displayed' ? 'displayed' : 'community'} ID`;
                         break;
                     case 'observationField':
                         if (action.promptForValue) {
@@ -6111,7 +6122,7 @@ async function createValidationModal(validationResults, selectedAction, onConfir
                         actionDesc = `Withdraw your current identification`;
                         break;
                     case 'agreeId':
-                        actionDesc = `Agree with the community ID`;
+                        actionDesc = `Agree with the ${action.agreeTarget === 'displayed' ? 'displayed' : 'community'} ID`;
                         break;
                     case 'observationField':
                         if (action.promptForValue) {

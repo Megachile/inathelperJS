@@ -23,23 +23,6 @@
     font-weight: bold;
 }
 
-.inline-radio {
-    display: flex;
-    gap: 10px; /* Adjust spacing between options */
-}
-
-.inline-radio input[type="radio"] {
-    margin-right: 5px; /* Space between button and text */
-    accent-color: #0073e6; /* Optional: Change radio button color */
-}
-
-.inline-radio label {
-    margin-right: 15px; /* Space between label and next option */
-    display: flex;
-    align-items: center;
-    cursor: pointer;
-}
-
 
 input, select { 
     width: 100%; 
@@ -308,6 +291,43 @@ button:hover {
 .action-item .fieldValueContainer {
     width: 100%;
     box-sizing: border-box;
+}
+
+/* Radio groups (Follow/Unfollow, Reviewed, Agree target).
+   Deliberately placed after the `.action-item input` and `input, select` rules above:
+   radios must not be stretched to width:100% or carry the global input padding, and
+   winning on source order as well as specificity keeps that true if either rule moves.
+   No flex `gap` here either — the inputs and labels are siblings, so a gap would push
+   each radio away from its own label as much as it separates the options. Spacing comes
+   from margins instead: 5px inside a pair, 18px between pairs. */
+.inline-radio {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.inline-radio input[type="radio"] {
+    width: auto;
+    flex: none;
+    margin: 0 5px 0 0; /* Space between button and text */
+    padding: 0;
+    accent-color: #0073e6; /* Optional: Change radio button color */
+}
+
+.inline-radio label {
+    margin: 0 18px 0 0; /* Space between label and next option */
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+}
+
+/* These groups are the last thing above the red Remove Action button, and unlike the
+   text-input action types they have no trailing input margin of their own. Keep them
+   clear of it so a low click lands on the radio rather than deleting the action. */
+.follow-options,
+.reviewed-options,
+.agree-options {
+    margin-bottom: 18px;
 }
 
 .fieldValueContainer {

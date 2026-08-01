@@ -1419,6 +1419,121 @@ async function makeAPIRequest(endpoint, options = {}) {
 // retry on 429 with Retry-After honoring, so overshoot is paid in latency.
 const BULK_CONCURRENCY = 8;
 
+// Fallback wait for when there is no filter to watch (see waitForGridToSettle), and
+// the cutoff for deciding an action doesn't affect what the page filters on: if the
+// match count hasn't moved by now, waiting longer buys the user nothing (#64).
+const REFRESH_SETTLE_MS = 2000;
+
+// How long the grid takes to catch up is not a constant — measured on a 50-observation
+// batch (#64), rows kept dropping out of a `without_field` filter from 633ms all the
+// way to 8.8s. So instead of waiting a worst-case guess, poll the page's own filter
+// and reload once it stops moving.
+//
+// Two properties of the measurement shape this:
+//   1. The count is NON-MONOTONIC — 28 → 29, 12 → 14 across consecutive polls, as
+//      queries land on Elasticsearch replicas at different refresh states. Waiting for
+//      a specific value would fire on a lucky sample and still reload too early.
+//   2. There is no known floor. Observations belonging to users who disallow
+//      observation fields never clear at all, so "wait for zero" would always time out.
+// Quiescence handles both: stop when the count stops changing, whatever it settled on.
+const REFRESH_POLL_INTERVAL_MS = 700;
+const REFRESH_POLL_QUIET_MS = 2100;   // three consecutive polls with no movement
+const REFRESH_POLL_MAX_MS = 15000;    // hard cap; reload regardless past this
+// Hitting zero is a stronger signal than mere quiescence: nothing we touched still
+// matches the filter, so no further change is possible and the quiet window has
+// nothing left to detect. It still gets ONE confirming poll rather than none —
+// counts were observed bouncing up by two (12 → 14) as queries hit replicas at
+// different refresh states, so a lone zero can be one replica's optimism.
+const REFRESH_POLL_ZERO_CONFIRMATIONS = 2;
+
+const PAGINATION_PARAMS = ['page', 'per_page', 'id', 'order', 'order_by', 'subview', 'layout', 'view'];
+
+// Rebuilds the current page's filter as an API query restricted to the observations we
+// just touched, so total_results reads as "how many of mine still match". Restricting
+// by id keeps it accurate without needing auth or modelling the Identify page's
+// implicit defaults. Returns null on a page with no filter — nothing to wait for.
+function buildPageFilterQuery(observationIds) {
+    if (typeof window === 'undefined' || !observationIds.length) return null;
+    const params = new URLSearchParams(window.location.search);
+    PAGINATION_PARAMS.forEach(param => params.delete(param));
+    if ([...params.keys()].length === 0) return null;
+    params.set('id', observationIds.slice(0, 200).join(','));
+    params.set('per_page', '0');
+    return `${API_URL}/observations?${params.toString()}`;
+}
+
+async function fetchFilterMatchCount(query) {
+    // cache:'no-store' — /v1/observations answers with Cache-Control: public,
+    // max-age=300, and a cached count would freeze the poll at its first reading.
+    const response = await fetch(query, { cache: 'no-store' });
+    if (!response.ok) throw new Error(`filter count fetch failed: HTTP ${response.status}`);
+    return (await response.json()).total_results;
+}
+
+// Resolves when the grid is worth reloading. onTick reports progress for the UI.
+async function waitForGridToSettle(observationIds, onTick) {
+    const startedAt = Date.now();
+    const elapsed = () => Date.now() - startedAt;
+    const query = buildPageFilterQuery(observationIds);
+
+    // Unfiltered page, or no successful edits to track: fall back to the flat wait.
+    if (!query) {
+        await new Promise(resolve => setTimeout(resolve, REFRESH_SETTLE_MS));
+        return { reason: 'no-filter', ms: elapsed() };
+    }
+
+    let lastCount = null;
+    let lastChangeAt = Date.now();
+    let sawChange = false;
+    let zeroReadings = 0;
+
+    while (elapsed() < REFRESH_POLL_MAX_MS) {
+        try {
+            const count = await fetchFilterMatchCount(query);
+            if (lastCount === null) {
+                lastCount = count;
+            } else if (count !== lastCount) {
+                lastCount = count;
+                lastChangeAt = Date.now();
+                sawChange = true;
+            }
+
+            // Nothing of ours still matches — done, once confirmed. No sawChange
+            // requirement: if none of the observations we touched match the filter,
+            // the grid is ready whether or not we watched them leave.
+            zeroReadings = count === 0 ? zeroReadings + 1 : 0;
+            if (zeroReadings >= REFRESH_POLL_ZERO_CONFIRMATIONS) {
+                return { reason: 'cleared', ms: elapsed(), stillMatching: 0 };
+            }
+
+            // Otherwise there's an unknown floor — observations belonging to users who
+            // disallow the edit never clear — so settle on the count going quiet.
+            if (sawChange && count === lastCount && Date.now() - lastChangeAt >= REFRESH_POLL_QUIET_MS) {
+                return { reason: 'settled', ms: elapsed(), stillMatching: count };
+            }
+            if (onTick) onTick({ stillMatching: count, ms: elapsed() });
+        } catch (error) {
+            debugLog('grid settle poll failed, continuing:', safeErrorString(error));
+        }
+
+        // Nothing has moved by the old flat settle window — this action probably
+        // doesn't change what the page filters on, so don't hold the user any longer.
+        if (!sawChange && elapsed() >= REFRESH_SETTLE_MS) {
+            return { reason: 'no-movement', ms: elapsed() };
+        }
+        await new Promise(resolve => setTimeout(resolve, REFRESH_POLL_INTERVAL_MS));
+    }
+    return { reason: 'timeout', ms: elapsed(), stillMatching: lastCount };
+}
+
+function affectedObservationIds(summaryByActionType) {
+    const ids = new Set();
+    Object.values(summaryByActionType || {}).forEach(summary => {
+        (summary.success || []).forEach(result => ids.add(String(result.observationId)));
+    });
+    return [...ids];
+}
+
 // Wraps `fetch` with 429 retry + Retry-After honoring + transient-network retry.
 // Returns the Response object as-is on success or after exhausting retries — lets
 // callers preserve their own non-OK handling (e.g. addTag's 403/410 mapping) while
@@ -2119,6 +2234,11 @@ function summarizeBulkActionOutcomes(allActionResults, configuredActions) {
 }
 
 function createDetailedActionResultsModal(summaryByActionType, actionSetName, skippedSafeModeObsIds, overwrittenValues, generalErrorMessages, autoRefreshAfterBulk = false) {
+    // The modal goes up as soon as the bulk action finishes, so this doubles as the
+    // completion time — used to work out how much of the settle window (#64) is left
+    // if the user hits "Close and Refresh" right away.
+    const actionCompletedAt = Date.now();
+
     const modal = document.createElement('div');
     modal.style.cssText = `
         position: fixed; top: 0; left: 0; width: 100%; height: 100%;
@@ -2185,7 +2305,9 @@ function createDetailedActionResultsModal(summaryByActionType, actionSetName, sk
         } else if (actionConfig.type === 'addTaxonId') {
             actionDisplayName = `Add ID: ${actionConfig.taxonName}`;
         } else if (actionConfig.type === 'agreeId') {
-            actionDisplayName = `Agree with Community ID`;
+            actionDisplayName = actionConfig.agreeTarget === 'displayed'
+                ? `Agree with Displayed ID`
+                : `Agree with Community ID`;
         } else if (actionConfig.type === 'addComment') {
             actionDisplayName = `Add Comment: "${actionConfig.commentBody.substring(0,30)}..."`;
         } else if (actionConfig.type === 'qualityMetric') {
@@ -2305,7 +2427,7 @@ function createDetailedActionResultsModal(summaryByActionType, actionSetName, sk
         contentHTML += `
             <div style="display: flex; gap: 10px; margin-top: 15px; justify-content: flex-end;">
                 <button id="detailed-results-close-button" class="modal-button">Close</button>
-                <button id="detailed-results-close-refresh-button" class="modal-button" style="background-color: #4caf50; color: white;">Close and Refresh</button>
+                <button id="detailed-results-close-refresh-button" class="modal-button" style="background-color: #4caf50; color: white;" title="iNaturalist takes a few seconds to index your changes. This waits for that, then reloads — so the page you get back actually shows what you just did. Use Close and refresh yourself if you'd rather not wait.">Refresh When Updated</button>
             </div>`;
     }
 
@@ -2338,10 +2460,39 @@ function createDetailedActionResultsModal(summaryByActionType, actionSetName, sk
     if (closeRefreshButton) {
         closeRefreshButton.addEventListener('click', function() {
             document.removeEventListener('keydown', handleModalKeyPress);
-            if (modal.parentNode) {
-                modal.parentNode.removeChild(modal);
+
+            const reloadNow = () => {
+                if (modal.parentNode) {
+                    modal.parentNode.removeChild(modal);
+                }
+                window.location.reload();
+            };
+
+            // Someone who sat reading the results has already waited out the lag, so
+            // there is nothing left to wait for and re-polling would be a delay with
+            // nothing behind it.
+            if (Date.now() - actionCompletedAt >= REFRESH_POLL_MAX_MS) {
+                reloadNow();
+                return;
             }
-            window.location.reload();
+
+            // Keep the modal up while waiting, otherwise the gap between the click and
+            // the reload is indistinguishable from the button doing nothing — which is
+            // the exact complaint that started #64.
+            closeRefreshButton.disabled = true;
+            if (closeButton) closeButton.disabled = true;
+            closeRefreshButton.textContent = 'Waiting for iNaturalist…';
+
+            waitForGridToSettle(affectedObservationIds(summaryByActionType), ({ stillMatching }) => {
+                // Name what is actually happening — we are waiting on iNat, not
+                // refreshing yet — and show the remaining count so the wait reads as
+                // progress rather than a hang.
+                closeRefreshButton.textContent = `Waiting for iNaturalist… (${stillMatching} left)`;
+            }).then((outcome) => {
+                debugLog(`grid settle before reload: ${outcome.reason} after ${outcome.ms}ms`);
+                closeRefreshButton.textContent = 'Refreshing…';
+                reloadNow();
+            });
         });
     }
 

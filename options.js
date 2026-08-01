@@ -546,6 +546,8 @@ function extractActionsFromForm() {
             case 'withdrawId' :
                 break;
             case 'agreeId':
+                // Older saved actions have no agreeTarget; 'community' is the historical behavior.
+                action.agreeTarget = actionDiv.querySelector('input[name^="agreeTarget"]:checked')?.value || 'community';
                 break;
             case 'observationField':
                 action.fieldId = actionDiv.querySelector('.fieldId').value.trim();
@@ -696,6 +698,9 @@ function validateCommonConfiguration(config) {
             case 'withdrawId' :
                 break;
             case 'agreeId':
+                if (!['community', 'displayed'].includes(action.agreeTarget)) {
+                    throw new Error("Invalid Agree target. Must be 'community' or 'displayed'.");
+                }
                 break;
             case 'observationField':
                 if (!action.fieldId || !action.fieldName || (!action.fieldValue && !action.promptForValue)) {
@@ -915,6 +920,11 @@ function populateActionInputs(actionDiv, action) {
         case 'withdrawId':
             break;
         case 'agreeId':
+            // Actions saved before the target was configurable agreed with the community ID.
+            const agreeTarget = action.agreeTarget || 'community';
+            actionDiv.querySelectorAll('input[name^="agreeTarget"]').forEach(radio => {
+                radio.checked = radio.value === agreeTarget;
+            });
             break;
         case 'observationField':
             actionDiv.querySelector('.fieldName').value = action.fieldName || '';
@@ -1106,7 +1116,7 @@ function addActionToForm(action = null) {
     actionDiv.innerHTML = `
         <select class="actionType">
             <option value="addTaxonId">Add Taxon ID</option>
-            <option value="agreeId">Agree with Community ID</option>
+            <option value="agreeId">Agree with ID</option>
             <option value="withdrawId">Withdraw ID</option>
             <option value="addComment">Add Comment</option>
             <option value="annotation">Annotation</option> 
@@ -1134,6 +1144,23 @@ function addActionToForm(action = null) {
                 <input type="radio" id="unmarkReviewed-${uid}" name="reviewedToggle-${uid}" value="unmark">
                 <label for="unmarkReviewed-${uid}">Mark as Unreviewed</label>
             </div>
+        </div>
+        <div class="agree-options" style="display: none;">
+            <div class="inline-radio">
+                <input type="radio" id="agreeCommunity-${uid}" name="agreeTarget-${uid}" value="community" checked>
+                <label for="agreeCommunity-${uid}">Community ID</label>
+                <input type="radio" id="agreeDisplayed-${uid}" name="agreeTarget-${uid}" value="displayed">
+                <label for="agreeDisplayed-${uid}">Displayed ID</label>
+            </div>
+            <p style="font-size: 12px; color: #666; margin-top: 5px; line-height: 1.5;">
+                These are often the same taxon, but not always &mdash; and on Needs ID observations they frequently differ.<br>
+                <strong>Community ID</strong> is the consensus taxon iNat computes from all identifications. When identifiers
+                disagree, it can be considerably coarser (e.g. family) than what you see on the thumbnail.<br>
+                <strong>Displayed ID</strong> is the taxon iNat shows on the observation thumbnail and header. This is what
+                iNat's own agree button on the thumbnail agrees with.<br>
+                If the chosen taxon doesn't exist on an observation, the other one is used; if neither exists, the
+                observation is skipped.
+            </p>
         </div>
         <div class="ofInputs">
             <input type="text" class="fieldName" placeholder="Observation Field Name">
@@ -1226,6 +1253,7 @@ function addActionToForm(action = null) {
     const actionType = actionDiv.querySelector('.actionType');
     const followOptions = actionDiv.querySelector('.follow-options');
     const reviewedOptions = actionDiv.querySelector('.reviewed-options');
+    const agreeOptions = actionDiv.querySelector('.agree-options');
     const ofInputs = actionDiv.querySelector('.ofInputs');
     const annotationInputs = actionDiv.querySelector('.annotationInputs');
     const commentInput = actionDiv.querySelector('.commentInput');
@@ -1261,7 +1289,8 @@ function addActionToForm(action = null) {
         tagInputs.style.display = actionType.value === 'addTag' ? 'block' : 'none';
         followOptions.style.display = actionType.value === 'follow' ? 'block' : 'none';
         reviewedOptions.style.display = actionType.value === 'reviewed' ? 'block' : 'none';
-    
+        agreeOptions.style.display = actionType.value === 'agreeId' ? 'block' : 'none';
+
         if (actionType.value === 'addToList') {
             debugLog('Add to List selected, refreshing list select');
             refreshListSelect(listSelect);
@@ -1713,7 +1742,9 @@ async function formatAction(action) {
         case 'withdrawId' :
             return 'Withdraw active identification';
         case 'agreeId':
-            return 'Agree with the community ID';
+            return action.agreeTarget === 'displayed'
+                ? 'Agree with the displayed ID'
+                : 'Agree with the community ID';
         case 'addToList':
             const listName = await getListName(action.listId);
             return action.remove ?
@@ -1985,7 +2016,7 @@ async function importConfigurations(event) {
         let setsImportAttempted = false;
         let setsImportShouldProceed = true; // Flag to control progression
 
-        if (importedData.configurationSets) {
+        if (Array.isArray(importedData.configurationSets) && importedData.configurationSets.length > 0) {
             setsImportAttempted = true;
             try {
                 const importResults = await createImportModal(importedData.configurationSets);
@@ -2002,14 +2033,18 @@ async function importConfigurations(event) {
                     debugLog('Configuration set import cancelled by user.');
                 }
             }
-        } else if (importedData.customButtons) {
+        } else if (Array.isArray(importedData.customButtons) && importedData.customButtons.length > 0) {
             setsImportAttempted = true;
             const setName = prompt("Enter a name for the imported set (old format):", `Imported Set ${new Date().toLocaleString()}`);
             if (setName) {
                 const newSet = { name: setName, buttons: importedData.customButtons };
                 try {
                     const storageData = await new Promise(resolve => browserAPI.storage.local.get(['configurationSets'], resolve));
-                    let currentSets = storageData.configurationSets || [{ name: 'Default Set', buttons: [] }];
+                    let currentSets = storageData.configurationSets || [];
+                    // Greenfield install: replace the empty starter set rather than keeping it (#66)
+                    if (isGreenfieldSetup(currentSets)) {
+                        currentSets = [];
+                    }
                     currentSets.push(newSet);
                     await setStorageWithQuotaCheck({ configurationSets: currentSets }, 'configurationSets');
                     configurationSets = currentSets;
@@ -2028,7 +2063,8 @@ async function importConfigurations(event) {
         let listsImportAttempted = false;
 
         // --- CRITICAL CHECK: Only proceed to list import if setsImportShouldProceed is true ---
-        if (setsImportShouldProceed && importedData.customLists) {
+        // An empty customLists array means the file carries no lists: skip the modal entirely (#66)
+        if (setsImportShouldProceed && Array.isArray(importedData.customLists) && importedData.customLists.length > 0) {
             listsImportAttempted = true;
             try {
                 const existingListsData = await new Promise(resolve => browserAPI.storage.local.get('customLists', resolve));
@@ -2048,8 +2084,14 @@ async function importConfigurations(event) {
             }
         }
 
-        if (!setsImportAttempted && !listsImportAttempted && !importedData.customButtons) {
-            alert('Invalid import format: No configurationSets, customButtons, or customLists found in the file.');
+        if (!setsImportAttempted && !listsImportAttempted) {
+            const hasEmptyContainers = ['configurationSets', 'customButtons', 'customLists']
+                .some(key => Array.isArray(importedData[key]));
+            if (hasEmptyContainers) {
+                alert('Nothing to import: the file contains no configuration sets, buttons, or lists.');
+            } else {
+                alert('Invalid import format: No configurationSets, customButtons, or customLists found in the file.');
+            }
         }
 
         loadOptionsPageData(); // Always refresh UI from storage at the end
@@ -2834,10 +2876,21 @@ function createImportModal(importedSets) {
     });
 }
 
+// loadOptionsPageData creates an empty "Default Set" on a fresh install. If the user's very
+// first action is importing sets, that placeholder is just clutter and should go away (#66).
+function isPlaceholderDefaultSet(set) {
+    return !!set && set.name === 'Default Set' && (!set.buttons || set.buttons.length === 0);
+}
+
+function isGreenfieldSetup(sets) {
+    return Array.isArray(sets) && sets.length === 1 && isPlaceholderDefaultSet(sets[0]);
+}
+
 async function processImportChoices(results) { // For Configuration Sets
     let setsToAdd = [];
     let setsMarkedForMerge = [];
     let skippedSetsCount = 0;
+    const startedGreenfield = isGreenfieldSetup(configurationSets);
 
     results.forEach(result => {
         switch (result.action) {
@@ -2876,6 +2929,20 @@ async function processImportChoices(results) { // For Configuration Sets
         }
     }
 
+    // Drop the untouched starter set now that real sets have arrived (#66).
+    // If an imported set merged into it, it is no longer empty and is kept.
+    let removedPlaceholderDefault = false;
+    if (startedGreenfield && configurationSets.length > 1) {
+        const placeholderIndex = configurationSets.findIndex(isPlaceholderDefaultSet);
+        if (placeholderIndex !== -1) {
+            const [placeholder] = configurationSets.splice(placeholderIndex, 1);
+            removedPlaceholderDefault = true;
+            if (optionsPageActiveSetName === placeholder.name) {
+                optionsPageActiveSetName = configurationSets[0].name;
+            }
+        }
+    }
+
     if (setsToAdd.length > 0 || setsMarkedForMerge.length > 0) {
         try {
             await saveConfigurationSets(); // This will throw on quota error
@@ -2883,6 +2950,7 @@ async function processImportChoices(results) { // For Configuration Sets
             let messageParts = [];
             if (setsToAdd.length > 0) messageParts.push(`Added or renamed ${setsToAdd.length} new configuration set(s).`);
             if (setsMarkedForMerge.length > 0) messageParts.push(`Processed ${setsMarkedForMerge.length} configuration set(s) for merging.`);
+            if (removedPlaceholderDefault) messageParts.push(`Removed the empty starter "Default Set".`);
 
             let alertMessage = "Configuration set import successful.";
             if (messageParts.length > 0) {

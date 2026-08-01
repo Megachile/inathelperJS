@@ -241,6 +241,37 @@ fieldset label {
   gap: 10px;
 }
 
+/* Multi-value enum filters (rank, IUCN status, observation license, obscuration).
+   auto-fill rather than a fixed column count so the 25-option rank list and the
+   3-option obscuration list both lay out sensibly. */
+.checkbox-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 4px 10px;
+  margin-bottom: 10px;
+}
+
+.checkbox-grid label {
+  display: flex;
+  align-items: center;
+  font-size: 14px;
+  font-weight: normal;
+}
+
+.checkbox-grid input[type="checkbox"] {
+  width: auto;
+  margin: 0 5px 0 0;
+  flex: none;
+}
+
+/* Section headings inside the Additional Parameters fieldset. */
+.filter-subhead {
+  margin: 18px 0 6px;
+  font-weight: bold;
+  border-bottom: 1px solid #ddd;
+  padding-bottom: 4px;
+}
+
 .category-item {
   display: flex;
   align-items: center;
@@ -256,9 +287,15 @@ fieldset label {
   margin-bottom: 10px;
 }
 
+/* A fixed column, not min-width. These labels range from "Native" to "Fails DQA: Single
+   Subject", and with min-width the long ones push their Any/Yes/No buttons rightward so
+   the buttons stop forming a vertical line down the list. Sized to clear the longest
+   current label at 16px Arial; anything longer wraps within the column rather than
+   shifting the buttons, so alignment holds no matter what gets added later. */
 .toggle-group label:first-child {
+  flex: 0 0 220px;
+  width: 220px;
   margin-right: 10px;
-  min-width: 120px;
 }
 
 .toggle-group input[type="radio"] {
