@@ -24,13 +24,6 @@ describe('dead code guard', () => {
     // Unreferenced on purpose: invoked by hand from the devtools console.
     const INTENTIONALLY_UNREFERENCED = new Set(['enableDebugMode', 'disableDebugMode']);
 
-    // Reached ONLY through dynamic dispatch, so no static reference to the name exists
-    // and the orphan check below cannot see them. This list is why the purge originally
-    // deleted lookupPlace and broke the URL builder's Place filter — a static-reference
-    // audit is blind to `window[`lookup${Type}`]`. Any new dynamic dispatch must be added
-    // both here and to the resolution test below.
-    const DYNAMICALLY_REFERENCED = new Set(['lookupPlace']);
-
     // Comments are stripped before counting references so a name mentioned only in prose
     // (including the comments in this repo that discuss dead code) doesn't read as a use.
     const stripComments = (s) => s
@@ -62,7 +55,7 @@ describe('dead code guard', () => {
     test('every top-level function is referenced somewhere', () => {
         const orphans = [];
         for (const [name, files] of Object.entries(declarations)) {
-            if (INTENTIONALLY_UNREFERENCED.has(name) || DYNAMICALLY_REFERENCED.has(name)) continue;
+            if (INTENTIONALLY_UNREFERENCED.has(name)) continue;
             const re = new RegExp(`\\b${name.replace(/\$/g, '\\$')}\\b`, 'g');
             const hits = (corpus.match(re) || []).length;
             // Each declaration is itself one occurrence; anything beyond that is a use.
@@ -85,51 +78,32 @@ describe('dead code guard', () => {
         expect(dupes).toEqual([]);
     });
 
-    // The orphan check above is a *static* reference count, so it cannot see
-    // `window[`lookup${Type}`]`. Deleting lookupPlace on its word broke the URL builder's
-    // Place filter at runtime while every test still passed. These two tests close that
-    // gap: the first proves every type routed through the dynamic dispatch resolves to a
-    // real function, the second fails if a new dynamic dispatch site appears that this
-    // file doesn't know about.
-    describe('dynamic dispatch targets resolve', () => {
-        test('every type reaching URLgen\'s window[`lookup${Type}`] has a lookup function', () => {
+    describe('URL builder field registry', () => {
+        test('one registry drives every button, restored field, and ID-filter type', () => {
             const urlgen = fs.readFileSync(path.join(repo, 'URLgen.js'), 'utf8');
+            const html = fs.readFileSync(path.join(repo, 'URLgen.html'), 'utf8');
+            const registry = urlgen.match(/const URL_BUILDER_DYNAMIC_FIELDS = Object\.freeze\(\{([\s\S]*?)\n\}\);/);
+            expect(registry).not.toBeNull();
 
-            // Derive the types from every `addField('x')` call site — the actual entry
-            // points — unioned with the `const types` array used for restore/generation.
-            // Reading only that array would miss a new addField('foo') that never joins it.
-            const fromCalls = [...urlgen.matchAll(/addField\(\s*['"]([A-Za-z_$][\w$]*)['"]/g)].map(m => m[1]);
-            const arr = urlgen.match(/const types = \[([^\]]*)\]/);
-            const fromArray = arr ? arr[1].split(',').map(s => s.trim().replace(/['"]/g, '')).filter(Boolean) : [];
-            const types = [...new Set([...fromCalls, ...fromArray])];
+            const entries = [...registry[1].matchAll(/^\s*([A-Za-z_$][\w$]*):\s*\{\s*buttonId:\s*'([^']+)',\s*includeInIdFilters:\s*(true|false)/gm)]
+                .map(([, type, buttonId, include]) => ({ type, buttonId, include: include === 'true' }));
+            expect(entries.map(entry => entry.type)).toEqual([
+                'taxon', 'idTaxon', 'user', 'identifier', 'project', 'place', 'observationField', 'annotation'
+            ]);
+            for (const entry of entries) {
+                expect(html).toContain(`id="${entry.buttonId}"`);
+            }
 
-            // Types with their own branch in addField never reach the dynamic dispatch.
-            const handledEarlier = ['annotation', 'idTaxon', 'taxon', 'identifier', 'observationField'];
-            const dynamic = types.filter(t => !handledEarlier.includes(t));
-
-            expect(fromCalls.length).toBeGreaterThan(0); // guard against a vacuous test
-            expect(dynamic.length).toBeGreaterThan(0);
-
-            // KNOWN LIMITATION: URLgen's restore path calls addField(field.type) with a
-            // value from localStorage, so a persisted type outside the literal call sites
-            // could in principle reach the dispatch. In practice persisted types can only
-            // be ones that were addable, i.e. a literal call site existed. This regex-based
-            // check also proves a declaration exists in a loadable file, not that it is
-            // reachable at runtime. Both are accepted gaps; the alternative is a real
-            // module graph, which this suite deliberately doesn't build.
-
-            // URLgen.html loads only shared_api.js + URLgen.js, so a declaration living in
-            // content.js would not exist at runtime on that page.
-            const visibleToURLgen = ['shared_api.js', 'URLgen.js'];
-            const missing = dynamic.filter(t => {
-                const fn = 'lookup' + t.charAt(0).toUpperCase() + t.slice(1);
-                const files = declarations[fn];
-                return !files || !files.some(f => visibleToURLgen.includes(f));
-            });
-            expect(missing).toEqual([]);
+            expect(urlgen).toMatch(/Object\.entries\(URL_BUILDER_DYNAMIC_FIELDS\)[\s\S]*addField\(type\)/);
+            expect(urlgen).toMatch(/URL_BUILDER_FIELD_TYPES\.includes\(type\)/);
+            expect(urlgen).toMatch(/URL_BUILDER_ID_FILTER_TYPES\.forEach\(type/);
+            expect(urlgen).toMatch(/const lastActionBox = addField\(field\.type\);\s*if \(!lastActionBox\) return;/);
         });
 
-        test('no unknown dynamic dispatch sites exist', () => {
+        test('autocomplete targets are direct, statically visible references', () => {
+            const urlgen = fs.readFileSync(path.join(repo, 'URLgen.js'), 'utf8');
+            expect(urlgen).toMatch(/const URL_BUILDER_AUTOCOMPLETE_LOOKUPS = Object\.freeze\(\{\s*user: lookupUser,\s*project: lookupProject,\s*place: lookupPlace\s*\}\);/);
+
             const sites = [];
             for (const f of jsFiles) {
                 const src = stripComments(fs.readFileSync(path.join(repo, f), 'utf8'));
@@ -137,11 +111,30 @@ describe('dead code guard', () => {
                     sites.push(`${f}: ${m[0].trim()}`);
                 }
             }
-            // Exactly one known site. A new one means the audit's blind spot widened —
-            // add it to DYNAMICALLY_REFERENCED and cover it above.
-            expect(sites).toEqual([
-                'URLgen.js: window[`lookup${type.charAt(0).toUpperCase() + type.slice(1)}`]'
-            ]);
+            expect(sites).toEqual([]);
+        });
+
+        test('a corrupt persisted field type is rejected before touching the DOM', () => {
+            const urlgen = fs.readFileSync(path.join(repo, 'URLgen.js'), 'utf8');
+            const registrySource = urlgen.slice(
+                urlgen.indexOf('const URL_BUILDER_DYNAMIC_FIELDS'),
+                urlgen.indexOf("document.addEventListener('DOMContentLoaded'")
+            );
+            const addFieldSource = urlgen.slice(
+                urlgen.indexOf('function addField(type)'),
+                urlgen.indexOf("document.getElementById('actionsContainer').addEventListener", urlgen.indexOf('function addField(type)'))
+            );
+            // eslint-disable-next-line no-new-func
+            const addField = new Function('lookupUser', 'lookupProject', 'lookupPlace', `
+                ${registrySource}
+                ${addFieldSource}
+                return addField;
+            `)(() => {}, () => {}, () => {});
+
+            const warning = jest.spyOn(console, 'warn').mockImplementation(() => {});
+            expect(addField('not-a-real-field')).toBeNull();
+            expect(warning).toHaveBeenCalledWith(expect.stringContaining('unsupported saved field type'));
+            warning.mockRestore();
         });
     });
 

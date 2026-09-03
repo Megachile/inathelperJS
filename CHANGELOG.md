@@ -5,7 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [3.4.1] - 2026-09-02
+
+### Fixed
+- **Imported configurations are validated before they reach a dialog or browser storage** (#62) — the import path previously trusted parsed JSON and could save malformed sets, buttons, actions, shortcuts, ordering metadata, or custom lists that the normal configuration form would reject. Imports now receive the same action-specific validation as manually created buttons, reject unknown action types and malformed nested data with an exact path to the problem, and catch duplicate set names, button names/IDs/shortcuts, and list names/IDs. Pre-3.4.0 Agree actions are safely normalized to their historical Community ID behavior.
+- **The URL builder's dead-code guard now covers restored field types** (#63) — add-field buttons, saved fields, ID-filter generation, and autocomplete lookups now share one field registry. Restored field types are checked at runtime, autocomplete functions use direct references instead of invisible `window[...]` dispatch, and the structural tests verify every registered button and lookup. This closes the blind spot that once allowed the live Place lookup to be deleted as apparently unused.
+- **Firefox no longer shows a false over-quota storage warning** (#68, reported by @Suntooth) — Firefox does not expose a fixed `storage.local` quota, but the options page substituted a made-up 5 MB limit and could therefore report values such as “139%” even while storage was healthy. It now labels Firefox's limit as browser-managed and breaks usage down into button configurations, custom lists, bulk-action history, the iNaturalist sign-in session, and remaining preferences. Counts for sets, buttons, lists, saved observations and undo records make unusually large categories easier to understand. The Bulk Action Records dialog now also explains the existing oldest-first 9 MB retention policy and lets users delete one record or clear all records, with confirmation that deleting history does not reverse any actions.
 
 ## [3.4.0] - 2026-08-01
 

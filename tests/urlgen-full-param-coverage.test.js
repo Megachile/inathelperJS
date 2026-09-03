@@ -186,7 +186,7 @@ describe('URL builder API param coverage', () => {
 
         test('the toggle loop emits a flipped boolean and skips the rest', () => {
             document.querySelector('input[name="fails_dqa_wild"][value="true"]').checked = true;
-            const params = runBlock('const toggles = [', 'const types = [');
+            const params = runBlock('const toggles = [', 'URL_BUILDER_ID_FILTER_TYPES.forEach(type => {');
             expect(params).toContain('fails_dqa_wild=true');
             expect(params).toHaveLength(1);
         });

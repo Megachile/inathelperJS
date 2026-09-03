@@ -37,12 +37,27 @@ const qualityMetrics = [
     { value: 'subject', label: 'Evidence related to a single subject' }
 ];
 
+const supportedActionTypes = new Set([
+    'follow',
+    'reviewed',
+    'withdrawId',
+    'agreeId',
+    'observationField',
+    'annotation',
+    'addToProject',
+    'addComment',
+    'addTaxonId',
+    'qualityMetric',
+    'copyObservationField',
+    'addToList',
+    'addTag'
+]);
+
 document.addEventListener('DOMContentLoaded', function() {
     // Initial data loading and UI setup
     loadOptionsPageData(); // This function now calls updateStorageUsageDisplay() internally
     populateFieldDatalist();
     displayLists();
-    loadUndoRecords(); // For the modal, if it's present or built dynamically
     loadAutoFollowSettings();
     loadBulkActionSettings();
     loadButtonLayoutSettings();
@@ -268,6 +283,7 @@ function openIssueReporterURL() {
 }
 
 function formatBytes(bytes, decimals = 2) {
+    if (typeof bytes !== 'number' || !isFinite(bytes) || bytes < 0) return 'Unknown';
     if (bytes === 0) return '0 Bytes';
     const k = 1024;
     const dm = decimals < 0 ? 0 : decimals;
@@ -278,13 +294,7 @@ function formatBytes(bytes, decimals = 2) {
 
 function updateStorageUsageDisplay() {
     const storageStatusElement = document.getElementById('storageStatus');
-
-    let totalQuota = browserAPI.storage.local.QUOTA_BYTES;
-
-    // Firefox doesn't expose QUOTA_BYTES on storage.local; fall back to its 5MB default.
-    if (typeof totalQuota !== 'number' || isNaN(totalQuota) || totalQuota <= 0) {
-        totalQuota = 5 * 1024 * 1024;
-    }
+    const storageBreakdownElement = document.getElementById('storageBreakdown');
 
     if (!browserAPI || !browserAPI.storage || !browserAPI.storage.local) {
         console.error("browserAPI or browserAPI.storage.local is not defined!");
@@ -292,33 +302,131 @@ function updateStorageUsageDisplay() {
             storageStatusElement.textContent = 'Storage Usage: API Error';
             storageStatusElement.style.color = 'red';
         }
+        if (storageBreakdownElement) {
+            storageBreakdownElement.textContent = 'Storage breakdown unavailable.';
+        }
         return;
     }
+
+    const exposedQuota = browserAPI.storage.local.QUOTA_BYTES;
+    const totalQuota = typeof exposedQuota === 'number' && isFinite(exposedQuota) && exposedQuota > 0
+        ? exposedQuota
+        : null;
+
+    updateStorageBreakdownDisplay(storageBreakdownElement);
 
     if (storageStatusElement && typeof browserAPI.storage.local.getBytesInUse === 'function') {
         try {
             browserAPI.storage.local.getBytesInUse(null, function(bytesInUse) {
                 if (browserAPI.runtime.lastError) {
                     console.error("Error calling getBytesInUse:", browserAPI.runtime.lastError.message);
-                    estimateStorageUsage(storageStatusElement, totalQuota); // Use the potentially corrected totalQuota
+                    estimateStorageUsage(storageStatusElement, totalQuota);
                     return;
                 }
 
                 if (typeof bytesInUse === 'number' && isFinite(bytesInUse)) {
-                    displayFormattedUsage(bytesInUse, totalQuota, storageStatusElement); // Use the potentially corrected totalQuota
+                    displayFormattedUsage(bytesInUse, totalQuota, storageStatusElement);
                 } else {
                     console.warn("getBytesInUse did not return a valid number. Received:", bytesInUse, "Falling back to estimation.");
-                    estimateStorageUsage(storageStatusElement, totalQuota); // Use the potentially corrected totalQuota
+                    estimateStorageUsage(storageStatusElement, totalQuota);
                 }
             });
         } catch (e) {
             console.error("Synchronous error when trying to call getBytesInUse:", e, "Falling back to estimation.");
-            estimateStorageUsage(storageStatusElement, totalQuota); // Use the potentially corrected totalQuota
+            estimateStorageUsage(storageStatusElement, totalQuota);
         }
     } else if (storageStatusElement) {
         console.warn("browserAPI.storage.local.getBytesInUse is not available. Estimating usage instead.");
-        estimateStorageUsage(storageStatusElement, totalQuota); // Use the potentially corrected totalQuota
+        estimateStorageUsage(storageStatusElement, totalQuota);
     }
+}
+
+function estimateStorageEntryBytes(key, value) {
+    const serializedValue = JSON.stringify(value);
+    if (serializedValue === undefined) return 0;
+    return new TextEncoder().encode(key + serializedValue).length;
+}
+
+function calculateStorageBreakdown(items) {
+    const categories = {
+        configurations: { label: 'Button configurations', bytes: 0 },
+        lists: { label: 'Custom lists', bytes: 0 },
+        history: { label: 'Bulk action history', bytes: 0 },
+        session: { label: 'iNaturalist sign-in session', bytes: 0 },
+        preferences: { label: 'Preferences and layout', bytes: 0 }
+    };
+    const categoryByKey = {
+        configurationSets: 'configurations',
+        customButtons: 'configurations',
+        observationFieldMap: 'configurations',
+        lastConfigUpdate: 'configurations',
+        customLists: 'lists',
+        undoRecords: 'history',
+        jwt: 'session'
+    };
+
+    Object.entries(items || {}).forEach(([key, value]) => {
+        const category = categoryByKey[key] || 'preferences';
+        categories[category].bytes += estimateStorageEntryBytes(key, value);
+    });
+
+    const configurationSets = Array.isArray(items && items.configurationSets) ? items.configurationSets : [];
+    const legacyButtons = Array.isArray(items && items.customButtons) ? items.customButtons : [];
+    const buttonCount = configurationSets.reduce(
+        (total, set) => total + (Array.isArray(set.buttons) ? set.buttons.length : 0),
+        legacyButtons.length
+    );
+    categories.configurations.detail = `${configurationSets.length} ${configurationSets.length === 1 ? 'set' : 'sets'}, ${buttonCount} ${buttonCount === 1 ? 'button' : 'buttons'}`;
+
+    const customLists = Array.isArray(items && items.customLists) ? items.customLists : [];
+    const savedObservationCount = customLists.reduce(
+        (total, list) => total + (Array.isArray(list.observations) ? list.observations.length : 0),
+        0
+    );
+    categories.lists.detail = `${customLists.length} ${customLists.length === 1 ? 'list' : 'lists'}, ${savedObservationCount} saved ${savedObservationCount === 1 ? 'observation' : 'observations'}`;
+
+    const undoRecords = Array.isArray(items && items.undoRecords) ? items.undoRecords : [];
+    categories.history.detail = `${undoRecords.length} ${undoRecords.length === 1 ? 'record' : 'records'}`;
+
+    return Object.values(categories);
+}
+
+function renderStorageBreakdown(items, element) {
+    element.textContent = '';
+    const categories = calculateStorageBreakdown(items);
+    const estimatedTotal = categories.reduce((total, category) => total + category.bytes, 0);
+    categories.forEach(category => {
+        const row = document.createElement('div');
+        row.className = 'storage-breakdown-row';
+        row.style.cssText = 'display: flex; justify-content: space-between; gap: 16px; padding: 3px 0; border-bottom: 1px solid #eee;';
+
+        const label = document.createElement('span');
+        label.textContent = category.detail
+            ? `${category.label} (${category.detail})`
+            : category.label;
+
+        const size = document.createElement('span');
+        const percentage = estimatedTotal > 0 ? ((category.bytes / estimatedTotal) * 100).toFixed(1) : '0.0';
+        size.textContent = `${formatBytes(category.bytes)} (${percentage}%)`;
+        size.style.whiteSpace = 'nowrap';
+
+        row.appendChild(label);
+        row.appendChild(size);
+        element.appendChild(row);
+    });
+}
+
+function updateStorageBreakdownDisplay(element) {
+    if (!element) return;
+
+    browserAPI.storage.local.get(null, function(items) {
+        if (browserAPI.runtime.lastError) {
+            console.error('Error retrieving storage breakdown:', browserAPI.runtime.lastError.message);
+            element.textContent = 'Storage breakdown unavailable.';
+            return;
+        }
+        renderStorageBreakdown(items || {}, element);
+    });
 }
 
 function estimateStorageUsage(statusElement, totalQuota) {
@@ -347,10 +455,21 @@ function estimateStorageUsage(statusElement, totalQuota) {
 
 function displayFormattedUsage(bytesInUse, totalQuota, element, suffix = "") {
     const usedFormatted = formatBytes(bytesInUse);
+    const suffixText = suffix ? ` ${suffix}` : '';
+    const hasKnownQuota = typeof totalQuota === 'number' && isFinite(totalQuota) && totalQuota > 0;
+
+    if (!hasKnownQuota) {
+        // Firefox does not expose a fixed QUOTA_BYTES value. Its extension-storage
+        // allowance is browser-managed, so inventing a 5 MB denominator creates false
+        // over-quota warnings even while writes continue to succeed (#68).
+        element.textContent = `Storage Usage: ${usedFormatted} used${suffixText} (browser-managed limit)`;
+        element.style.color = '#555';
+        return;
+    }
+
     const totalFormatted = formatBytes(totalQuota);
-    const percentage = totalQuota > 0 ? ((bytesInUse / totalQuota) * 100).toFixed(1) : "0.0";
-    
-    element.textContent = `Storage Usage: ${usedFormatted} / ${totalFormatted} (${percentage}%) ${suffix}`;
+    const percentage = ((bytesInUse / totalQuota) * 100).toFixed(1);
+    element.textContent = `Storage Usage: ${usedFormatted} / ${totalFormatted} (${percentage}%)${suffixText}`;
     element.style.color = '#555'; // Default
 
     const numericPercentage = parseFloat(percentage);
@@ -364,7 +483,10 @@ function displayFormattedUsage(bytesInUse, totalQuota, element, suffix = "") {
 async function setStorageWithQuotaCheck(dataToSet, keyBeingPrimarilyModified = null) {
     // --- START TEST MODIFICATION ---
     const IS_TESTING_QUOTA = false; 
-    const REAL_QUOTA = browserAPI.storage.local.QUOTA_BYTES;
+    const exposedQuota = browserAPI.storage.local.QUOTA_BYTES;
+    const REAL_QUOTA = typeof exposedQuota === 'number' && isFinite(exposedQuota) && exposedQuota > 0
+        ? exposedQuota
+        : null;
     let quotaToUse;
 
     if (IS_TESTING_QUOTA) {
@@ -378,8 +500,9 @@ async function setStorageWithQuotaCheck(dataToSet, keyBeingPrimarilyModified = n
     }
     // --- END TEST MODIFICATION ---
     
-    const safetyMarginPercentage = 0.05; 
-    let safetyMargin = safetyMarginPercentage * quotaToUse;
+    const hasFixedQuota = typeof quotaToUse === 'number' && isFinite(quotaToUse) && quotaToUse > 0;
+    const safetyMarginPercentage = 0.05;
+    let safetyMargin = hasFixedQuota ? safetyMarginPercentage * quotaToUse : 0;
 
     if (IS_TESTING_QUOTA && quotaToUse < 50 * 1024) { 
          safetyMargin = 0.01 * quotaToUse; // Even smaller margin for tiny test quotas, like 1%
@@ -399,9 +522,13 @@ async function setStorageWithQuotaCheck(dataToSet, keyBeingPrimarilyModified = n
     const estimatedTotalSizeAfterSave = new TextEncoder().encode(JSON.stringify(nextFullStorageState)).length;
     // const estimatedTotalSizeAfterSave = JSON.stringify(nextFullStorageState).length; // Original estimate
 
-    debugLog(`Check: Est. Size (bytes) ${formatBytes(estimatedTotalSizeAfterSave)}, Limit (incl. margin) ${formatBytes(quotaToUse - safetyMargin)}, Test Quota (raw) ${formatBytes(quotaToUse)}`);
+    if (hasFixedQuota) {
+        debugLog(`Check: Est. Size (bytes) ${formatBytes(estimatedTotalSizeAfterSave)}, Limit (incl. margin) ${formatBytes(quotaToUse - safetyMargin)}, Test Quota (raw) ${formatBytes(quotaToUse)}`);
+    } else {
+        debugLog(`Check: Est. Size (bytes) ${formatBytes(estimatedTotalSizeAfterSave)}; browser does not expose a fixed local-storage quota.`);
+    }
 
-    if (estimatedTotalSizeAfterSave > quotaToUse - safetyMargin) {
+    if (hasFixedQuota && estimatedTotalSizeAfterSave > quotaToUse - safetyMargin) {
         // --- NEW DETAILED LOGS INSIDE THE IF BLOCK ---
         debugLog(">>> QUOTA EXCEEDED CONDITION MET (TEST) <<<");
         debugLog(`>>> Estimated: ${formatBytes(estimatedTotalSizeAfterSave)}, Limit: ${formatBytes(quotaToUse - safetyMargin)}`);
@@ -673,17 +800,28 @@ function validateEditConfiguration(config, originalConfig, buttonsInCurrentSet) 
 }
 
 function validateCommonConfiguration(config) {
+    if (!isPlainObject(config) || !Array.isArray(config.actions)) {
+        throw new Error("The configuration must contain an actions array.");
+    }
+
     if (config.actions.length === 0) {
         throw new Error("Please add at least one action to the configuration.");
     }
 
     if (config.shortcut) {
+        if (!isPlainObject(config.shortcut)) {
+            throw new Error("The shortcut must be an object.");
+        }
         if (!config.shortcut.key && (config.shortcut.ctrlKey || config.shortcut.shiftKey || config.shortcut.altKey)) {
             throw new Error("A key must be selected along with modifier keys for the shortcut.");
         }
     }
 
-    config.actions.forEach(action => {
+    config.actions.forEach((action, actionIndex) => {
+        if (!isPlainObject(action) || typeof action.type !== 'string' || !supportedActionTypes.has(action.type)) {
+            throw new Error(`Action ${actionIndex + 1} has an unsupported action type.`);
+        }
+
         switch (action.type) {
             case 'follow':
                 if (!['follow', 'unfollow'].includes(action.follow)) {
@@ -728,13 +866,18 @@ function validateCommonConfiguration(config) {
                 }
                 break;
             case 'qualityMetric':
-                if (!action.metric || !action.vote) {
+                if (!qualityMetrics.some(metric => metric.value === action.metric) || !['agree', 'disagree', 'remove'].includes(action.vote)) {
                     throw new Error("Please select both a metric and a vote for all Quality Metric actions.");
                 }
                 break;
             case 'copyObservationField':
                 if (!action.sourceFieldId || !action.sourceFieldName || !action.targetFieldId || !action.targetFieldName) {
                     throw new Error("Please enter Source Field Name, ID, Target Field Name, and ID for all Copy Observation Field actions.");
+                }
+                break;
+            case 'addToList':
+                if (!action.listId) {
+                    throw new Error("Please select a list for all Add to List actions.");
                 }
                 break;
             case 'addTag':
@@ -744,6 +887,277 @@ function validateCommonConfiguration(config) {
                 break;
         }
     });
+}
+
+function isPlainObject(value) {
+    return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function importValidationError(path, message) {
+    throw new Error(`${path}: ${message}`);
+}
+
+function normalizeImportedShortcut(shortcut, path) {
+    if (shortcut === undefined || shortcut === null) {
+        return { key: '', ctrlKey: false, shiftKey: false, altKey: false };
+    }
+    if (!isPlainObject(shortcut)) {
+        importValidationError(path, 'must be an object.');
+    }
+    if (shortcut.key !== undefined && typeof shortcut.key !== 'string') {
+        importValidationError(`${path}.key`, 'must be a string.');
+    }
+
+    for (const modifier of ['ctrlKey', 'shiftKey', 'altKey']) {
+        if (shortcut[modifier] !== undefined && typeof shortcut[modifier] !== 'boolean') {
+            importValidationError(`${path}.${modifier}`, 'must be true or false.');
+        }
+    }
+
+    return {
+        ...shortcut,
+        key: (shortcut.key || '').trim().toUpperCase(),
+        ctrlKey: shortcut.ctrlKey || false,
+        shiftKey: shortcut.shiftKey || false,
+        altKey: shortcut.altKey || false
+    };
+}
+
+function validateImportedActionShape(action, path) {
+    const scalar = ['string', 'number'];
+    const propertyTypes = {
+        follow: { follow: ['string'] },
+        reviewed: { reviewed: ['string'] },
+        withdrawId: {},
+        agreeId: { agreeTarget: ['string'] },
+        observationField: {
+            fieldId: scalar,
+            fieldName: ['string'],
+            fieldValue: scalar,
+            displayValue: ['string'],
+            promptForValue: ['boolean'],
+            fieldDatatype: ['string'],
+            fieldAllowedValues: ['string']
+        },
+        annotation: {
+            annotationField: scalar,
+            annotationValue: scalar,
+            disagree: ['boolean']
+        },
+        addToProject: { projectId: scalar, projectName: ['string'], remove: ['boolean'] },
+        addComment: { commentBody: ['string'] },
+        addTaxonId: {
+            taxonId: scalar,
+            taxonName: ['string'],
+            comment: ['string'],
+            disagreement: ['boolean']
+        },
+        qualityMetric: { metric: ['string'], vote: ['string'] },
+        copyObservationField: {
+            sourceFieldId: scalar,
+            sourceFieldName: ['string'],
+            targetFieldId: scalar,
+            targetFieldName: ['string']
+        },
+        addToList: { listId: scalar, remove: ['boolean'] },
+        addTag: { tagText: ['string'] }
+    };
+
+    Object.entries(propertyTypes[action.type]).forEach(([property, allowedTypes]) => {
+        if (action[property] !== undefined && !allowedTypes.includes(typeof action[property])) {
+            importValidationError(`${path}.${property}`, `must be ${allowedTypes.join(' or ')}.`);
+        }
+    });
+}
+
+function normalizeImportedButton(button, path, earlierButtons) {
+    if (!isPlainObject(button)) {
+        importValidationError(path, 'must be an object.');
+    }
+    if (!['string', 'number'].includes(typeof button.id) || String(button.id).trim() === '') {
+        importValidationError(`${path}.id`, 'must be a non-empty string or number.');
+    }
+    if (typeof button.name !== 'string' || !button.name.trim()) {
+        importValidationError(`${path}.name`, 'must be a non-empty string.');
+    }
+    if (!Array.isArray(button.actions)) {
+        importValidationError(`${path}.actions`, 'must be an array.');
+    }
+
+    const actions = button.actions.map((action, actionIndex) => {
+        const actionPath = `${path}.actions[${actionIndex}]`;
+        if (!isPlainObject(action)) {
+            importValidationError(actionPath, 'must be an object.');
+        }
+        if (typeof action.type !== 'string' || !supportedActionTypes.has(action.type)) {
+            importValidationError(`${actionPath}.type`, `unsupported action type "${String(action.type)}".`);
+        }
+        validateImportedActionShape(action, actionPath);
+
+        // agreeTarget was introduced in v3.4.0. Older exports used the community taxon.
+        if (action.type === 'agreeId' && action.agreeTarget === undefined) {
+            return { ...action, agreeTarget: 'community' };
+        }
+        return { ...action };
+    });
+
+    for (const property of ['buttonHidden', 'configurationDisabled']) {
+        if (button[property] !== undefined && typeof button[property] !== 'boolean') {
+            importValidationError(`${path}.${property}`, 'must be true or false.');
+        }
+    }
+
+    const normalizedButton = {
+        ...button,
+        name: button.name.trim(),
+        shortcut: normalizeImportedShortcut(button.shortcut, `${path}.shortcut`),
+        actions,
+        buttonHidden: button.buttonHidden || false,
+        configurationDisabled: button.configurationDisabled || false
+    };
+
+    try {
+        validateNewConfiguration(normalizedButton, earlierButtons);
+    } catch (error) {
+        importValidationError(path, error.message);
+    }
+    return normalizedButton;
+}
+
+function validateImportedOrder(order, path, buttonIds) {
+    if (order === undefined) return undefined;
+    if (!Array.isArray(order) || order.some(id => !['string', 'number'].includes(typeof id) || String(id).trim() === '')) {
+        importValidationError(path, 'must be an array of button IDs.');
+    }
+    const orderIds = order.map(String);
+    if (new Set(orderIds).size !== orderIds.length) {
+        importValidationError(path, 'must not contain duplicate button IDs.');
+    }
+    const unknownId = orderIds.find(id => !buttonIds.has(id));
+    if (unknownId !== undefined) {
+        importValidationError(path, `references unknown button ID "${unknownId}".`);
+    }
+    return [...order];
+}
+
+function normalizeImportedConfigurationSets(importedSets, path = 'configurationSets') {
+    if (!Array.isArray(importedSets)) {
+        importValidationError(path, 'must be an array.');
+    }
+
+    const seenSetNames = new Set();
+    return importedSets.map((set, setIndex) => {
+        const setPath = `${path}[${setIndex}]`;
+        if (!isPlainObject(set)) {
+            importValidationError(setPath, 'must be an object.');
+        }
+        if (typeof set.name !== 'string' || !set.name.trim()) {
+            importValidationError(`${setPath}.name`, 'must be a non-empty string.');
+        }
+        const setName = set.name.trim();
+        if (seenSetNames.has(setName)) {
+            importValidationError(`${setPath}.name`, `duplicates the imported set name "${setName}".`);
+        }
+        seenSetNames.add(setName);
+        if (!Array.isArray(set.buttons)) {
+            importValidationError(`${setPath}.buttons`, 'must be an array.');
+        }
+        if (set.observationFieldMap !== undefined && !isPlainObject(set.observationFieldMap)) {
+            importValidationError(`${setPath}.observationFieldMap`, 'must be an object.');
+        }
+        if (set.observationFieldMap !== undefined && Object.entries(set.observationFieldMap)
+            .some(([id, name]) => !id.trim() || typeof name !== 'string')) {
+            importValidationError(`${setPath}.observationFieldMap`, 'must map field IDs to field names.');
+        }
+        if (set.sortMethod !== undefined && !['default', 'az', 'za', 'custom'].includes(set.sortMethod)) {
+            importValidationError(`${setPath}.sortMethod`, 'must be default, az, za, or custom.');
+        }
+
+        const buttons = [];
+        const seenButtonIds = new Set();
+        set.buttons.forEach((button, buttonIndex) => {
+            const buttonPath = `${setPath}.buttons[${buttonIndex}]`;
+            const normalizedButton = normalizeImportedButton(button, buttonPath, buttons);
+            const idKey = String(normalizedButton.id);
+            if (seenButtonIds.has(idKey)) {
+                importValidationError(`${buttonPath}.id`, `duplicates button ID "${idKey}" in this set.`);
+            }
+            seenButtonIds.add(idKey);
+            buttons.push(normalizedButton);
+        });
+
+        const normalizedSet = {
+            ...set,
+            name: setName,
+            buttons
+        };
+        if (set.customOrder !== undefined) {
+            normalizedSet.customOrder = validateImportedOrder(set.customOrder, `${setPath}.customOrder`, seenButtonIds);
+        }
+        if (set.buttonOrder !== undefined) {
+            normalizedSet.buttonOrder = validateImportedOrder(set.buttonOrder, `${setPath}.buttonOrder`, seenButtonIds);
+        }
+        return normalizedSet;
+    });
+}
+
+function normalizeImportedLists(importedLists, path = 'customLists') {
+    if (!Array.isArray(importedLists)) {
+        importValidationError(path, 'must be an array.');
+    }
+
+    const seenListIds = new Set();
+    const seenListNames = new Set();
+    return importedLists.map((list, listIndex) => {
+        const listPath = `${path}[${listIndex}]`;
+        if (!isPlainObject(list)) {
+            importValidationError(listPath, 'must be an object.');
+        }
+        if (!['string', 'number'].includes(typeof list.id) || String(list.id).trim() === '') {
+            importValidationError(`${listPath}.id`, 'must be a non-empty string or number.');
+        }
+        if (typeof list.name !== 'string' || !list.name.trim()) {
+            importValidationError(`${listPath}.name`, 'must be a non-empty string.');
+        }
+        const listName = list.name.trim();
+        if (seenListNames.has(listName)) {
+            importValidationError(`${listPath}.name`, `duplicates the imported list name "${listName}".`);
+        }
+        seenListNames.add(listName);
+        if (!Array.isArray(list.observations)) {
+            importValidationError(`${listPath}.observations`, 'must be an array.');
+        }
+        if (list.observations.some(id => !['string', 'number'].includes(typeof id) || String(id).trim() === '')) {
+            importValidationError(`${listPath}.observations`, 'must contain only non-empty observation IDs.');
+        }
+
+        const idKey = String(list.id);
+        if (seenListIds.has(idKey)) {
+            importValidationError(`${listPath}.id`, `duplicates list ID "${idKey}".`);
+        }
+        seenListIds.add(idKey);
+        return { ...list, name: listName, observations: [...list.observations] };
+    });
+}
+
+function validateAndNormalizeImportData(importedData) {
+    if (!isPlainObject(importedData)) {
+        importValidationError('Import', 'the top-level JSON value must be an object.');
+    }
+
+    const normalizedData = { ...importedData };
+    if (Object.prototype.hasOwnProperty.call(importedData, 'configurationSets')) {
+        normalizedData.configurationSets = normalizeImportedConfigurationSets(importedData.configurationSets);
+    }
+    if (Object.prototype.hasOwnProperty.call(importedData, 'customButtons')) {
+        normalizedData.customButtons = normalizeImportedConfigurationSets([
+            { name: 'Legacy import', buttons: importedData.customButtons }
+        ], 'legacyConfigurationSets')[0].buttons;
+    }
+    if (Object.prototype.hasOwnProperty.call(importedData, 'customLists')) {
+        normalizedData.customLists = normalizeImportedLists(importedData.customLists);
+    }
+    return normalizedData;
 }
 
 async function saveConfiguration() {
@@ -2013,6 +2427,15 @@ async function importConfigurations(event) {
             return;
         }
 
+        try {
+            importedData = validateAndNormalizeImportData(importedData);
+        } catch (validationError) {
+            alert('Import rejected because the file contains invalid configuration data.\n\n' + validationError.message);
+            console.error('Import validation error:', validationError);
+            if (event.target) event.target.value = '';
+            return;
+        }
+
         let setsImportAttempted = false;
         let setsImportShouldProceed = true; // Flag to control progression
 
@@ -2127,51 +2550,6 @@ function mergeConfigurationSets(importedSetsToProcess) {
             console.warn(`Merge target set "${importedSet.name}" not found in existing configurationSets. Adding as new.`);
             configurationSets.push(JSON.parse(JSON.stringify(importedSet)));
         }
-    });
-}
-
-function loadUndoRecords() {
-    const container = document.getElementById('undoRecordsContainer');
-    if (!container) {
-        debugLog('Undo records container not found. This is expected if the modal is not open.');
-        return;
-    }
-
-    browserAPI.storage.local.get('undoRecords', function(result) {
-        const undoRecords = result.undoRecords || [];
-        if (undoRecords.length === 0) {
-            container.textContent = 'No undo records available.';
-            return;
-        }
-
-        undoRecords.forEach(record => {
-            const recordDiv = document.createElement('div');
-            recordDiv.className = 'undo-record';
-            
-            const actionInfo = document.createElement('p');
-            actionInfo.textContent = `${record.action} - ${new Date(record.timestamp).toLocaleString()}`;
-            recordDiv.appendChild(actionInfo);
-            
-            const observationIds = Object.keys(record.observations);
-            const observationUrl = generateObservationURL(observationIds);
-            
-            const linkParagraph = document.createElement('a');
-            linkParagraph.href = observationUrl;
-            linkParagraph.textContent = 'View affected observations';
-            linkParagraph.target = '_blank';
-            recordDiv.appendChild(linkParagraph);
-            
-            const removeButton = document.createElement('button');
-            removeButton.textContent = 'Remove Record';
-            removeButton.onclick = function() {
-                removeUndoRecord(record.id, function() {
-                    recordDiv.remove();
-                });
-            };
-            recordDiv.appendChild(removeButton);
-            
-            container.appendChild(recordDiv);
-        });
     });
 }
 

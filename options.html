@@ -704,9 +704,21 @@ button:hover {
     </div>
     <button id="openBulkActionsButton">Open Advanced Filters URL Generator</button>
     <button id="showUndoRecordsButton">Show Bulk Action Records</button>
-    <div id="storageStatus" style="margin-top: 20px; text-align: center; font-size: 0.9em; color: #555;">
+    <div id="storageStatus" aria-live="polite" style="margin-top: 20px; text-align: center; font-size: 0.9em; color: #555;">
         Storage Usage: Loading...
-    </div>    
+    </div>
+    <details id="storageDetails" style="max-width: 640px; margin: 6px auto 0;">
+        <summary style="width: fit-content; margin: 0 auto; cursor: pointer; font-size: 0.85em; color: #555;">Storage details</summary>
+        <div id="storageExplanation" style="max-width: 620px; margin: 8px auto 0; text-align: center; font-size: 0.85em; color: #666; line-height: 1.4;">
+            Stored only in this browser: button configurations, custom lists, bulk-action undo history, your iNaturalist sign-in session, and interface preferences. Category sizes below are approximate.
+        </div>
+        <div id="storageBreakdown" aria-live="polite" style="max-width: 520px; margin: 10px auto 0; font-size: 0.85em; color: #555;">
+            Loading storage breakdown...
+        </div>
+        <div id="storageRetentionNote" style="max-width: 620px; margin: 8px auto 0; text-align: center; font-size: 0.8em; color: #666; line-height: 1.4;">
+            Deleting bulk-action records frees space and removes only the ability to undo those runs—it does not reverse any actions. Oldest records are removed automatically as bulk history approaches 9 MB.
+        </div>
+    </details>
     <div class="hardcoded-shortcuts">
         <h2 id="advanced-settings-toggle">Advanced Settings [+]</h2>
         <div id="advanced-settings-container" style="display: none; margin-top: 10px; padding-left: 20px;">

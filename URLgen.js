@@ -3,36 +3,40 @@ let searchLayer;
 let activeDrawTool = null;
 let tooltipsEnabled = false;
 
+const URL_BUILDER_DYNAMIC_FIELDS = Object.freeze({
+    taxon: { buttonId: 'addTaxonButton', includeInIdFilters: true },
+    idTaxon: { buttonId: 'addIdTaxonButton', includeInIdFilters: true },
+    user: { buttonId: 'addUserButton', includeInIdFilters: true },
+    identifier: { buttonId: 'addIdentifierButton', includeInIdFilters: true },
+    project: { buttonId: 'addProjectButton', includeInIdFilters: true },
+    place: { buttonId: 'addPlaceButton', includeInIdFilters: true },
+    observationField: { buttonId: 'addObservationFieldButton', includeInIdFilters: false },
+    annotation: { buttonId: 'addAnnotationButton', includeInIdFilters: false }
+});
+const URL_BUILDER_FIELD_TYPES = Object.freeze(Object.keys(URL_BUILDER_DYNAMIC_FIELDS));
+const URL_BUILDER_ID_FILTER_TYPES = Object.freeze(
+    URL_BUILDER_FIELD_TYPES.filter(type => URL_BUILDER_DYNAMIC_FIELDS[type].includeInIdFilters)
+);
+const URL_BUILDER_AUTOCOMPLETE_LOOKUPS = Object.freeze({
+    user: lookupUser,
+    project: lookupProject,
+    place: lookupPlace
+});
+
 document.addEventListener('DOMContentLoaded', function() {
-    const addTaxonButton = document.getElementById('addTaxonButton');
-    const addUserButton = document.getElementById('addUserButton');
-    const addProjectButton = document.getElementById('addProjectButton');
-    const addPlaceButton = document.getElementById('addPlaceButton');
-    const addObservationFieldButton = document.getElementById('addObservationFieldButton');
-    const addAnnotationButton = document.getElementById('addAnnotationButton');
-    const addIdTaxonButton = document.getElementById('addIdTaxonButton');
-    const addIdentifierButton = document.getElementById('addIdentifierButton');
     setupDateSelector('observed');
     setupDateSelector('added');
 
     populateCustomLists();
-  
-    // Check if all buttons are found
-    if (!addTaxonButton) console.error('addTaxonButton not found');
-    if (!addUserButton) console.error('addUserButton not found');
-    if (!addProjectButton) console.error('addProjectButton not found');
-    if (!addPlaceButton) console.error('addPlaceButton not found');
-    if (!addObservationFieldButton) console.error('addObservationFieldButton not found');
-    if (!addAnnotationButton) console.error('addAnnotationButton not found');
 
-    addTaxonButton.addEventListener('click', () => addField('taxon'));
-    addUserButton.addEventListener('click', () => addField('user'));
-    addProjectButton.addEventListener('click', () => addField('project'));
-    addPlaceButton.addEventListener('click', () => addField('place'));
-    addObservationFieldButton.addEventListener('click', () => addField('observationField'));
-    addAnnotationButton.addEventListener('click', () => addField('annotation'));
-    addIdTaxonButton.addEventListener('click', () => addField('idTaxon'));
-    addIdentifierButton.addEventListener('click', () => addField('identifier'));
+    Object.entries(URL_BUILDER_DYNAMIC_FIELDS).forEach(([type, definition]) => {
+        const button = document.getElementById(definition.buttonId);
+        if (!button) {
+            console.error(`${definition.buttonId} not found`);
+            return;
+        }
+        button.addEventListener('click', () => addField(type));
+    });
    
     const filtersFieldset = document.getElementById('additionalFilters');
 
@@ -324,7 +328,16 @@ function setupDateSelector(type) {
 
 
 function addField(type) {
+    if (!URL_BUILDER_FIELD_TYPES.includes(type)) {
+        console.warn(`URL builder: ignored unsupported saved field type "${String(type)}"`);
+        return null;
+    }
+
     const container = document.getElementById('actionsContainer');
+    if (!container) {
+        console.error('actionsContainer not found');
+        return null;
+    }
     const fieldCount = container.querySelectorAll('.action-box').length;
     const actionBox = document.createElement('div');
     actionBox.className = 'action-box';
@@ -432,6 +445,7 @@ function addField(type) {
 
     debugLog(`Field added: `, fieldGroup);
     saveInputs();
+    return actionBox;
 }
 
 document.getElementById('actionsContainer').addEventListener('change', saveInputs);
@@ -447,16 +461,17 @@ function setupAutocomplete(type, index) {
 
     debugLog(`Setting up autocomplete for type ${type} with index ${index}`);
 
-    if (type === 'taxon') {
-        setupTaxonAutocomplete(input, idInput);
-    } else {
-        setupAutocompleteDropdown(input, window[`lookup${type.charAt(0).toUpperCase() + type.slice(1)}`], (result) => {
-            idInput.value = result.id;
-            input.value = result.name || result.title || result.login;
-            debugLog(`Autocomplete selection for ${type}:`, { value: input.value, id: idInput.value });
-            debugLog(`ID input (${type}Id${index}) value set to:`, idInput.value);
-        });
+    const lookup = URL_BUILDER_AUTOCOMPLETE_LOOKUPS[type];
+    if (!lookup) {
+        console.error(`No autocomplete lookup registered for field type "${type}"`);
+        return;
     }
+    setupAutocompleteDropdown(input, lookup, (result) => {
+        idInput.value = result.id;
+        input.value = result.name || result.title || result.login;
+        debugLog(`Autocomplete selection for ${type}:`, { value: input.value, id: idInput.value });
+        debugLog(`ID input (${type}Id${index}) value set to:`, idInput.value);
+    });
 
     input.addEventListener('input', () => {
         if (input.value === '') {
@@ -667,8 +682,7 @@ async function generateURL() {
         }
     });
     
-    const types = ['taxon', 'idTaxon', 'user', 'identifier', 'project', 'place'];
-    types.forEach(type => {
+    URL_BUILDER_ID_FILTER_TYPES.forEach(type => {
         const { ids, withoutIds, exactIds, withoutDirectIds, applyRulesIds, notMatchingRulesIds } = processInputs(type);
         
         if (ids.length > 0) {
@@ -1651,8 +1665,8 @@ function loadInputs() {
         const actionsContainer = document.getElementById('actionsContainer');
         if (actionsContainer && savedState.dynamicFields) {
             savedState.dynamicFields.forEach(field => {
-                addField(field.type);
-                const lastActionBox = actionsContainer.lastElementChild;
+                const lastActionBox = addField(field.type);
+                if (!lastActionBox) return;
                 
                 if (field.disabled) {
                     lastActionBox.classList.add('disabled');

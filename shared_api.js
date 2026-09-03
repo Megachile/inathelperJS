@@ -645,12 +645,34 @@ function generateObservationURL(observationIds) {
 
 function removeUndoRecord(id, callback) {
     browserAPI.storage.local.get('undoRecords', function(result) {
+        if (browserAPI.runtime.lastError) {
+            console.error('Failed to retrieve undo records:', browserAPI.runtime.lastError.message);
+            callback(browserAPI.runtime.lastError);
+            return;
+        }
         let undoRecords = result.undoRecords || [];
         undoRecords = undoRecords.filter(record => record.id !== id);
         browserAPI.storage.local.set({undoRecords: undoRecords}, function() {
+            if (browserAPI.runtime.lastError) {
+                console.error('Failed to remove undo record:', browserAPI.runtime.lastError.message);
+                callback(browserAPI.runtime.lastError);
+                return;
+            }
             debugLog('Undo record removed');
-            callback();
+            callback(null);
         });
+    });
+}
+
+function clearUndoRecords(callback) {
+    browserAPI.storage.local.remove('undoRecords', function() {
+        if (browserAPI.runtime.lastError) {
+            console.error('Failed to clear undo records:', browserAPI.runtime.lastError.message);
+            callback(browserAPI.runtime.lastError);
+            return;
+        }
+        debugLog('All undo records cleared');
+        callback(null);
     });
 }
 // The undo itself is performed by this modal's own undo button handler below. There
@@ -698,8 +720,19 @@ function createUndoRecordsModal(undoRecords) {
             z-index: 1;
         `;
         const title = document.createElement('h2');
-        title.textContent = 'Undo Records';
+        title.textContent = 'Bulk Action Records';
         title.style.margin = '0';
+
+        const headerActions = document.createElement('div');
+        headerActions.style.cssText = `
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        `;
+
+        const clearAllButton = document.createElement('button');
+        clearAllButton.textContent = 'Clear All Records';
+        clearAllButton.title = 'Delete all bulk-action undo history without reversing any actions';
 
         const closeButton = document.createElement('button');
         closeButton.textContent = '\u2715';
@@ -727,16 +760,50 @@ function createUndoRecordsModal(undoRecords) {
             flex-grow: 1;
         `;
         
+        headerActions.appendChild(clearAllButton);
+        headerActions.appendChild(closeButton);
         headerSection.appendChild(title);
-        headerSection.appendChild(closeButton);
+        headerSection.appendChild(headerActions);
         modalContent.appendChild(headerSection);
         const progressBar = createProgressBar();
         modalContent.appendChild(progressBar);
         modalContent.appendChild(contentSection);
 
+        const explanation = document.createElement('p');
+        explanation.textContent = 'These records let you undo past bulk actions. Deleting a record only removes its undo history; it does not reverse the action. Oldest records are removed automatically as history approaches 9 MB.';
+        explanation.style.cssText = 'margin: 0 0 15px 0; color: #555;';
+        contentSection.appendChild(explanation);
+
+        const updateRecordCount = () => {
+            const remaining = contentSection.querySelectorAll('.undo-record').length;
+            title.textContent = `Bulk Action Records (${remaining})`;
+            clearAllButton.disabled = remaining === 0;
+            if (remaining === 0 && !contentSection.querySelector('.undo-records-empty')) {
+                const emptyMessage = document.createElement('p');
+                emptyMessage.className = 'undo-records-empty';
+                emptyMessage.textContent = 'No bulk action records available.';
+                contentSection.appendChild(emptyMessage);
+            }
+        };
+
+        clearAllButton.onclick = function() {
+            const confirmed = confirm('Delete all bulk action records? This removes their undo history only; it will not reverse any actions.');
+            if (!confirmed) return;
+
+            clearUndoRecords(function(error) {
+                if (error) {
+                    alert(`Could not clear bulk action records: ${safeErrorString(error)}`);
+                    return;
+                }
+                contentSection.querySelectorAll('.undo-record').forEach(element => element.remove());
+                updateRecordCount();
+            });
+        };
+
         undoRecords.forEach((record, index) => {
             try {
                 const recordDiv = document.createElement('div');
+                recordDiv.className = 'undo-record';
                 recordDiv.style.cssText = `
                     border: 1px solid #ccc;
                     border-radius: 5px;
@@ -810,6 +877,24 @@ function createUndoRecordsModal(undoRecords) {
                     }
                 };
                 recordDiv.appendChild(undoButton);
+
+                const deleteButton = document.createElement('button');
+                deleteButton.textContent = 'Delete Record';
+                deleteButton.style.marginLeft = '8px';
+                deleteButton.onclick = function() {
+                    const confirmed = confirm('Delete this bulk action record? This removes its undo history only; it will not reverse any actions.');
+                    if (!confirmed) return;
+
+                    removeUndoRecord(record.id, function(error) {
+                        if (error) {
+                            alert(`Could not delete bulk action record: ${safeErrorString(error)}`);
+                            return;
+                        }
+                        recordDiv.remove();
+                        updateRecordCount();
+                    });
+                };
+                recordDiv.appendChild(deleteButton);
                 contentSection.appendChild(recordDiv);
             } catch (error) {
                 console.error('Error processing undo record:', error);
@@ -820,6 +905,8 @@ function createUndoRecordsModal(undoRecords) {
                 contentSection.appendChild(errorDiv);
             }
         });
+
+        updateRecordCount();
 
         overlay.appendChild(modalContent);
         return overlay;
