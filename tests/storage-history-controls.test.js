@@ -144,6 +144,30 @@ describe('storage usage and bulk action history (#68)', () => {
             document.body.innerHTML = '';
         });
 
+        test('the retention explanation is hidden behind an accessible hover hint', () => {
+            const { modal } = buildModal({ records: [record('1')] });
+            const helpButton = modal.querySelector('.undo-records-help');
+            const tooltip = modal.querySelector('.undo-records-help-tooltip');
+
+            expect(helpButton).not.toBeNull();
+            expect(helpButton.getAttribute('aria-describedby')).toBe(tooltip.id);
+            expect(tooltip.getAttribute('role')).toBe('tooltip');
+            expect(tooltip.textContent).toContain('Deleting a record only removes its undo history');
+            expect(tooltip.textContent).toContain('approaches 9 MB');
+            expect(tooltip.style.display).toBe('none');
+
+            helpButton.dispatchEvent(new MouseEvent('mouseenter'));
+            expect(tooltip.style.display).toBe('block');
+
+            helpButton.dispatchEvent(new MouseEvent('mouseleave'));
+            expect(tooltip.style.display).toBe('none');
+
+            helpButton.focus();
+            expect(tooltip.style.display).toBe('block');
+            helpButton.blur();
+            expect(tooltip.style.display).toBe('none');
+        });
+
         test('deleting one record confirms that no action is reversed and removes its card', () => {
             const { modal, removeUndoRecord, confirm } = buildModal({ records: [record('1')] });
             const deleteButton = [...modal.querySelectorAll('button')]

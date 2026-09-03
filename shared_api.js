@@ -723,6 +723,67 @@ function createUndoRecordsModal(undoRecords) {
         title.textContent = 'Bulk Action Records';
         title.style.margin = '0';
 
+        const titleGroup = document.createElement('div');
+        titleGroup.style.cssText = `
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            position: relative;
+        `;
+
+        const helpText = 'These records let you undo past bulk actions. Deleting a record only removes its undo history; it does not reverse the action. Oldest records are removed automatically as history approaches 9 MB.';
+        const helpButton = document.createElement('button');
+        helpButton.type = 'button';
+        helpButton.className = 'undo-records-help';
+        helpButton.textContent = 'ⓘ';
+        helpButton.setAttribute('aria-label', 'About bulk action records');
+        helpButton.setAttribute('aria-describedby', 'undo-records-help-tooltip');
+        helpButton.style.cssText = `
+            border: 0;
+            background: transparent;
+            color: #666;
+            cursor: help;
+            font-size: 16px;
+            line-height: 1;
+            padding: 2px;
+        `;
+
+        const helpTooltip = document.createElement('span');
+        helpTooltip.id = 'undo-records-help-tooltip';
+        helpTooltip.className = 'undo-records-help-tooltip';
+        helpTooltip.setAttribute('role', 'tooltip');
+        helpTooltip.textContent = helpText;
+        helpTooltip.style.cssText = `
+            display: none;
+            position: absolute;
+            top: calc(100% + 8px);
+            left: 0;
+            z-index: 2;
+            width: min(340px, calc(100vw - 40px));
+            padding: 9px 11px;
+            border-radius: 4px;
+            background: #333;
+            color: white;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+            font-size: 13px;
+            font-weight: normal;
+            line-height: 1.4;
+            text-align: left;
+            pointer-events: none;
+        `;
+
+        const setHelpVisible = visible => {
+            helpTooltip.style.display = visible ? 'block' : 'none';
+        };
+        helpButton.addEventListener('mouseenter', () => setHelpVisible(true));
+        helpButton.addEventListener('mouseleave', () => setHelpVisible(false));
+        helpButton.addEventListener('focus', () => setHelpVisible(true));
+        helpButton.addEventListener('blur', () => setHelpVisible(false));
+
+        titleGroup.appendChild(title);
+        titleGroup.appendChild(helpButton);
+        titleGroup.appendChild(helpTooltip);
+
         const headerActions = document.createElement('div');
         headerActions.style.cssText = `
             display: flex;
@@ -762,17 +823,12 @@ function createUndoRecordsModal(undoRecords) {
         
         headerActions.appendChild(clearAllButton);
         headerActions.appendChild(closeButton);
-        headerSection.appendChild(title);
+        headerSection.appendChild(titleGroup);
         headerSection.appendChild(headerActions);
         modalContent.appendChild(headerSection);
         const progressBar = createProgressBar();
         modalContent.appendChild(progressBar);
         modalContent.appendChild(contentSection);
-
-        const explanation = document.createElement('p');
-        explanation.textContent = 'These records let you undo past bulk actions. Deleting a record only removes its undo history; it does not reverse the action. Oldest records are removed automatically as history approaches 9 MB.';
-        explanation.style.cssText = 'margin: 0 0 15px 0; color: #555;';
-        contentSection.appendChild(explanation);
 
         const updateRecordCount = () => {
             const remaining = contentSection.querySelectorAll('.undo-record').length;
